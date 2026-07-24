@@ -1,3 +1,4 @@
+import Link from "next/link";
 /**
  * /error — DB / RLS / Auth 取得エラーの汎用表示。
  * 内部詳細・スタック・Supabase エラーを表示しない（情報漏えい防止）。
@@ -16,12 +17,12 @@ export default function ErrorPage() {
         現在、システムへのアクセスに問題が発生しています。しばらく待ってから
         再度お試しください。問題が続く場合は管理者にお問い合わせください。
       </p>
-      <a
+      <Link
         href="/"
         className="inline-block rounded border border-slate-300 px-4 py-2 text-center text-sm hover:bg-slate-100"
       >
         トップへ戻る
-      </a>
+      </Link>
     </main>
   );
 }
