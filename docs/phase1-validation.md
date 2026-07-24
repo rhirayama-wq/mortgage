@@ -8,7 +8,11 @@
 - `scripts/pg-harness/run.sh` により migration `0001_phase1_identity_org_rls.sql` を
   `ON_ERROR_STOP` で適用 → 成功。
 - seed.sql（架空ブートストラップ）適用 → 成功。
-- **FUNC-01..16 / SEC-01..09,11..16 / SEC-62..75 / CONC-01..03: 全て PASS**（test-cases.md 参照）。
+- **FUNC-01..16 / SEC-01..09,11..16 / SEC-62..87 / CONC-01..04: 全て PASS**（test-cases.md 参照）。
+  - 2026-07-24 レビュー対応 r3 で追加: SEC-76..80（SYSTEM_ADMIN による法人操作と revoke の並行直列化。
+    invite/role/status 変更はグローバル→法人の両ロック取得へ変更）、SEC-81（ロック取得順の静的検証）、
+    SEC-82（timeout/lock_timeout によりデッドロック・無期限待機を PASS 扱いにしない）、
+    SEC-83..85（失敗監査 actor の DB 側整合検証）、SEC-86..87（correlation ID 冪等 unique index）。
   - 2026-07-24 レビュー対応で追加: SEC-62..65（法人管理関数の SYSTEM_ADMIN 集合ロック＋ロック後再認可の並行検証）、
     SEC-66..70（user_profiles の SALES_USER 越権遮断）、SEC-71..75（専用失敗監査関数の DB 側制約）。
   - SEC-10（旧: 同一法人メンバー相互のプロフィール可視）は SALES_USER への email 露出のため**仕様ごと撤回**し、

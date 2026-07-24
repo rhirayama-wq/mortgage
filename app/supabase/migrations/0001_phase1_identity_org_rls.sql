@@ -92,6 +92,13 @@ create table public.authoritative_audit_logs (
 create index authoritative_audit_logs_org_idx
   on public.authoritative_audit_logs (organization_id, occurred_at desc);
 
+-- correlation ID による冪等性（SEC-86/87）:
+-- 同一 correlation の同一 action・同一 success は1件のみ。
+-- 成功監査と失敗監査は同一 correlation で共存し得るため success を含める。
+create unique index authoritative_audit_logs_correlation_uniq
+  on public.authoritative_audit_logs (correlation_id, action, success)
+  where correlation_id is not null;
+
 comment on table public.authoritative_audit_logs is
   'Append-only authoritative audit. Success rows are written inside business functions (same tx). Failure rows are written by the server via dedicated per-action functions (e.g. app_record_membership_accept_failure; separate tx, service_role only). No PII bodies / financial details / JWT / secrets in metadata.';
 
@@ -506,6 +513,7 @@ declare
     'unexpected_error'
   ];
   v_organization_id uuid;
+  v_membership_user_id uuid;
 begin
   if p_actor_user_id is null then
     raise exception 'audit_actor_required' using errcode = '22023';
@@ -522,22 +530,31 @@ begin
     raise exception 'audit_error_code_not_allowed' using errcode = '22023';
   end if;
 
-  -- organization_id はクライアント申告ではなく DB 側で解決（存在しない場合は null）
-  select organization_id into v_organization_id
+  -- organization_id / membership 本人はクライアント申告ではなく DB 側で解決・検証する。
+  -- membership が存在する場合、actor は membership 本人でなければならない（SEC-83/84）。
+  -- membership_not_found の場合は対象行がないため、サーバーが認証済みユーザーから
+  -- 決定した actor をそのまま記録する（SEC-85）。
+  select organization_id, user_id
+    into v_organization_id, v_membership_user_id
     from public.organization_memberships
    where id = p_membership_id;
 
-  -- action / resource_type / success / metadata は呼出し側から変更不能（固定値）
-  perform public.app_write_audit(
-    'membership.accept',
-    p_actor_user_id,
-    v_organization_id,
-    'organization_membership',
-    p_membership_id::text,
-    false,
-    p_error_code,
-    p_correlation_id,
-    '{}'::jsonb);
+  if found and v_membership_user_id is distinct from p_actor_user_id then
+    raise exception 'audit_actor_membership_mismatch' using errcode = '22023';
+  end if;
+
+  -- action / resource_type / success / metadata は呼出し側から変更不能（固定値）。
+  -- correlation_id による冪等性: 同一 correlation の同一失敗監査の再送
+  -- （Server Action / HTTP リトライ）は unique partial index
+  -- (correlation_id, action, success) との衝突を無視して正常終了する（SEC-86）。
+  insert into public.authoritative_audit_logs
+    (action, actor_user_id, organization_id, resource_type, resource_id,
+     success, error_code, correlation_id, metadata)
+  values
+    ('membership.accept', p_actor_user_id, v_organization_id,
+     'organization_membership', p_membership_id::text,
+     false, p_error_code, p_correlation_id, '{}'::jsonb)
+  on conflict do nothing;
 end;
 $$;
 
@@ -548,6 +565,13 @@ $$;
 --     advisory lock keys:
 --       (815001, 1)                  : SYSTEM_ADMIN 集合（グローバル）
 --       (815002, hashtext(org_id))   : 法人管理者集合（法人単位）
+--     複数ロックの固定順序（SEC-81。逆順禁止＝デッドロック防止）:
+--       必ず「グローバル (815001) → 法人 (815002)」の順で取得する。
+--     SYSTEM_ADMIN も実行し得る法人操作（invite / role / status 変更）は
+--     両ロックを取得する。これにより SYSTEM_ADMIN revoke（グローバルロック）と
+--     直列化され、ロック待機中に権限を失った actor は再認可で拒否される
+--     （SEC-76..80）。ORGANIZATION_ADMIN の操作も一時的にグローバルロックを
+--     取得するが、Phase 1 は安全性と単純なロック順序を優先する（U18）。
 -- ---------------------------------------------------------------------------
 
 -- 10.1 法人作成（SYSTEM_ADMIN 専用）
@@ -685,7 +709,8 @@ declare
   v_target uuid;
   v_membership uuid;
 begin
-  -- lock first, then authorize (SEC-61..64)
+  -- lock first (global -> org の固定順序), then authorize (SEC-76..81)
+  perform pg_advisory_xact_lock(815001, 1);
   perform pg_advisory_xact_lock(815002, hashtext(p_organization_id::text));
 
   if not (public.app_is_org_admin(p_organization_id) or public.app_is_system_admin()) then
@@ -816,6 +841,7 @@ begin
     raise exception 'membership_not_found' using errcode = 'P0002';
   end if;
 
+  perform pg_advisory_xact_lock(815001, 1);
   perform pg_advisory_xact_lock(815002, hashtext(v_org::text));
 
   if not (public.app_is_org_admin(v_org) or public.app_is_system_admin()) then
@@ -887,6 +913,7 @@ begin
     raise exception 'membership_not_found' using errcode = 'P0002';
   end if;
 
+  perform pg_advisory_xact_lock(815001, 1);
   perform pg_advisory_xact_lock(815002, hashtext(v_org::text));
 
   if not (public.app_is_org_admin(v_org) or public.app_is_system_admin()) then

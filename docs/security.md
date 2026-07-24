@@ -28,7 +28,7 @@
 ヘルパー（app_is_system_admin 等）は SECURITY DEFINER・search_path='' で RLS 再帰を回避。
 NULL 三値論理: system_role 比較は `is not distinct from` を使用。
 
-## 4. 業務関数の並行制御（SEC-62..65 / CONC-01..03 で検証済み）
+## 4. 業務関数の並行制御（SEC-62..65, 76..82 / CONC-01..04 で検証済み）
 実行順序:
 1. `pg_advisory_xact_lock`（下表のロック種別）
 2. **ロック取得後に認可を確認**（認可確認後にロック待ちしない）
@@ -39,8 +39,19 @@ NULL 三値論理: system_role 比較は `is not distinct from` を使用。
 
 | ロック | キー | 対象関数 |
 |---|---|---|
-| SYSTEM_ADMIN 集合（グローバル） | (815001, 1) | app_create_organization / app_rename_organization / app_archive_organization / app_grant_system_admin / app_revoke_system_admin / app_bootstrap_first_system_admin |
-| 法人管理者集合（法人単位） | (815002, hashtext(org_id)) | app_invite_organization_member / app_accept_invitation / app_change_member_role / app_suspend_member / app_reactivate_member / app_end_membership（実体: app_change_member_status） |
+| グローバルのみ | (815001, 1) | app_create_organization / app_rename_organization / app_archive_organization / app_grant_system_admin / app_revoke_system_admin / app_bootstrap_first_system_admin |
+| **グローバル → 法人（両方・この順）** | (815001,1) → (815002, hashtext(org_id)) | app_invite_organization_member / app_change_member_role / app_change_member_status（app_suspend_member / app_reactivate_member / app_end_membership の実体） |
+| 法人のみ | (815002, hashtext(org_id)) | app_accept_invitation（本人のみ実行可・SYSTEM_ADMIN 経路なし） |
+
+**複数ロックの固定順序（SEC-81）**: 必ず「SYSTEM_ADMIN グローバル (815001) → 法人 (815002)」。
+逆順は作らない（デッドロック要因）。SEC-81 が pg_get_functiondef で取得順を静的検証する。
+
+**SYSTEM_ADMIN も実行し得る法人操作（invite / role / status 変更）は両ロックを取得する。**
+これによりグローバルロックを取る grant/revoke と直列化され、ロック待機中に SYSTEM_ADMIN を
+取り消された actor は再認可で拒否される（SEC-76..80 並行検証済み。デッドロック・無期限待機は
+timeout / lock_timeout により PASS 扱いにしない: SEC-82）。ORGANIZATION_ADMIN の操作も一時的に
+グローバルロックを取得するが、Phase 1 は安全性と単純なロック順序を優先する（性能課題が出た場合の
+分岐設計は U18）。
 
 ロックを取らない関数: RLSヘルパー（読取のみ）・トリガー関数・app_write_audit（呼出し元業務関数のロック内で実行）・app_record_membership_accept_failure（追記専用・競合対象なし）。
 
@@ -49,7 +60,9 @@ NULL 三値論理: system_role 比較は `is not distinct from` を使用。
 ## 5. 監査
 - 成功: 業務関数内で同一 Tx（`app_write_audit`）。actor は auth.uid() から決定。クライアントは actor/success/action を指定できない。
 - 失敗: DB 例外で Tx ごとロールバック → **サーバー（Server Action）が例外捕捉し、service_role で専用関数 `app_record_membership_accept_failure` を別 Tx 実行**（実装: `src/lib/auth/audit.ts`, 呼出: `pending-invitation/actions.ts`）。汎用の失敗監査 RPC は置かない（Phase 1 の失敗監査対象は membership.accept のみ）。
-- 専用関数の DB 側制約（SEC-71..75 で検証済み）: action='membership.accept'・resource_type='organization_membership'・success=false・metadata='{}' を固定（パラメータ自体が存在しない）／error_code は許可リスト7種のみ／actor・membership・correlation は必須／organization_id は membership から DB 側で解決（クライアント申告不可）。
+- 専用関数の DB 側制約（SEC-71..75, 83..87 で検証済み）: action='membership.accept'・resource_type='organization_membership'・success=false・metadata='{}' を固定（パラメータ自体が存在しない）／error_code は許可リスト7種のみ／actor・membership・correlation は必須／organization_id は membership から DB 側で解決（クライアント申告不可）。
+- **actor 整合（SEC-83..85）**: membership が存在する場合、p_actor_user_id は membership 本人と一致しなければ `audit_actor_membership_mismatch` で拒否。membership_not_found の場合のみサーバーが認証済みユーザーから決定した actor をそのまま記録。
+- **correlation ID 冪等性（SEC-86..87）**: unique partial index `(correlation_id, action, success) where correlation_id is not null` ＋ 専用関数の `on conflict do nothing` により、Server Action / HTTP リトライによる同一失敗監査の重複を1件に抑止。success を含むため、同一 correlation の成功監査と失敗監査は別イベントとして共存できる。
 - metadata に PII 本文・財務情報・JWT・秘密情報を入れない。error_code はアプリ側でも同一許可リストへ正規化（`toSafeErrorCode`）。
 
 ## 6. SECURITY DEFINER 規律

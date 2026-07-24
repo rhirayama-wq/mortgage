@@ -86,6 +86,7 @@
 | U13 | unit test ランナー | **確定（レビュー指摘反映）: 正式ランナーは Vitest**（`npm run test`）。テストは `import {test} from "vitest"` + node:assert/strict で記述。レジストリ不通環境用に `npm run test:offline`（tsconfig paths で vitest→node:test シム解決）を併設。シムは node_modules 存在時には使用されない |
 | U15 | Magic Link 再送クールダウンの実効性 | Cookie ベース（httpOnly, 60秒, タイムスタンプのみ保存・メールアドレスは保存もログもしない）。**クライアント協調型でありサーバー側レート制限ではない**（Cookie 破棄で回避可能・複数インスタンス非共有）。実防御は GoTrue 側のメール送信レート制限に依存。サーバー側レート制限（正規化メールの HMAC キー等）は Post-MVP 課題 |
 | U16 | package-lock.json | 本サンドボックスはレジストリ不通のため**生成不能・未コミット**。最初に `npm install` 可能な環境で lockfile を生成しコミットすること。それまで CI の `npm ci` ジョブは失敗する（既知・意図的に隠さない） |
+| U18 | 法人操作のグローバルロック性能 | Phase 1 は安全性と単純なロック順序を優先し、SYSTEM_ADMIN も実行し得る法人操作（invite/role/status）は常に「グローバル→法人」の両ロックを取得（ORGANIZATION_ADMIN 操作も一時的にグローバルロックを通過）。将来スループットが問題になった場合、actor の権限種別を安全に判定してロックを分岐する設計を別途検討する |
 | U17 | SALES_USER への同僚表示名の開示 | 2026-07-24 レビューで user_profiles の同一法人相互可視を撤回（SALES_USER に email 等を露出するため）。現行: 本人＋ORGANIZATION_ADMIN＋SYSTEM_ADMIN のみ。案件担当者名表示等で SALES_USER に表示名が必要になった場合は、user_id と display_name のみを返す専用ビュー/関数を追加する（user_profiles 全体は開けない） |
 | U14 | shadcn/ui の導入時期 | Phase 1 画面は素の Tailwind（CLI がレジストリ遮断で実行不可、かつ §5「不要な依存追加禁止」）。Phase 2 フォーム群から導入 |
 
@@ -107,3 +108,8 @@
   app_record_membership_accept_failure へ（DB側で action/resource/success/metadata 固定・
   error_code 許可リスト、SEC-71..75 追加・PASS）。④テストランナー表記を Vitest 正式へ統一（U13）。
   migration 0001 は未適用・未共有のため直接修正（CLAUDE.md §33 の条件確認済み）。
+- 2026-07-24 (レビュー対応 r3): ①invite/change_member_role/change_member_status に
+  SYSTEM_ADMIN グローバルロックを追加し「グローバル→法人」の固定順序へ統一
+  （SEC-76..82 追加・PASS、U18）。②失敗監査に actor=membership本人 の DB 側整合検証と、
+  correlation unique partial index (correlation_id, action, success) + on conflict do nothing
+  による冪等性を追加（SEC-83..87 追加・PASS）。migration 0001 直接修正（同上条件）。

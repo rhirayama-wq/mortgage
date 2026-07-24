@@ -524,4 +524,140 @@ begin
 end
 $$;
 
+-- SEC-81: 複数ロック関数のロック取得順は必ず global(815001) -> org(815002)
+do $$
+declare
+  fn text; def text; p1 int; p2 int;
+  v_fns constant text[] := array[
+    'app_invite_organization_member',
+    'app_change_member_role',
+    'app_change_member_status'];
+begin
+  foreach fn in array v_fns loop
+    select pg_get_functiondef(p.oid) into def
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = fn;
+    p1 := position('815001' in def);
+    p2 := position('815002' in def);
+    if p1 = 0 or p2 = 0 or p1 > p2 then
+      raise exception 'TEST FAIL: SEC-81 lock order violated in % (p1=%, p2=%)', fn, p1, p2;
+    end if;
+  end loop;
+  -- 単一ロック関数に逆順の組合せが無いこと（org ロックのみの関数に 815001 が無い）
+  select pg_get_functiondef(p.oid) into def
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'app_accept_invitation';
+  if position('815001' in def) > 0 then
+    raise exception 'TEST FAIL: SEC-81 accept_invitation unexpectedly takes global lock';
+  end if;
+end
+$$;
+
+-- SEC-83: membership 本人と異なる actor の失敗監査は拒否される
+do $$
+declare v_ok boolean := false;
+begin
+  perform test.as_service();
+  begin
+    perform public.app_record_membership_accept_failure(
+      '00000000-0000-4000-8000-000000000003',  -- sales A（本人ではない）
+      test.id('m_invitee'),                     -- 本人は U5
+      'not_authorized', '00000000-0000-4000-8000-00000000ee01');
+  exception when invalid_parameter_value then
+    if sqlerrm like '%audit_actor_membership_mismatch%' then v_ok := true;
+    else raise; end if;
+  end;
+  if not v_ok then
+    raise exception 'TEST FAIL: SEC-83 actor mismatch not rejected';
+  end if;
+  perform test.reset();
+  if exists (select 1 from public.authoritative_audit_logs
+              where correlation_id = '00000000-0000-4000-8000-00000000ee01') then
+    raise exception 'TEST FAIL: SEC-83 rejected audit left a row';
+  end if;
+end
+$$;
+
+-- SEC-84: membership 本人の actor 指定は成功する
+do $$
+begin
+  perform test.as_service();
+  perform public.app_record_membership_accept_failure(
+    '00000000-0000-4000-8000-000000000005', test.id('m_invitee'),
+    'not_authorized', '00000000-0000-4000-8000-00000000ee02');
+  perform test.reset();
+  if not exists (
+    select 1 from public.authoritative_audit_logs
+     where correlation_id = '00000000-0000-4000-8000-00000000ee02'
+       and success = false and actor_user_id = '00000000-0000-4000-8000-000000000005'
+  ) then
+    raise exception 'TEST FAIL: SEC-84 valid actor audit missing';
+  end if;
+end
+$$;
+
+-- SEC-85: membership_not_found の場合はサーバー決定の actor で記録され、org は null
+do $$
+declare v_row public.authoritative_audit_logs%rowtype;
+begin
+  perform test.as_service();
+  perform public.app_record_membership_accept_failure(
+    '00000000-0000-4000-8000-000000000005',
+    '00000000-0000-4000-8000-00000000fff1',   -- 存在しない membership
+    'membership_not_found', '00000000-0000-4000-8000-00000000ee03');
+  perform test.reset();
+  select * into v_row from public.authoritative_audit_logs
+   where correlation_id = '00000000-0000-4000-8000-00000000ee03';
+  if not found or v_row.organization_id is not null
+     or v_row.actor_user_id is distinct from '00000000-0000-4000-8000-000000000005'
+     or v_row.error_code <> 'membership_not_found' then
+    raise exception 'TEST FAIL: SEC-85 not-found failure audit incorrect';
+  end if;
+end
+$$;
+
+-- SEC-86: 同一 correlation の同一失敗監査を2回呼出し -> 監査行は1件（冪等）
+do $$
+declare v_n int;
+begin
+  perform test.as_service();
+  perform public.app_record_membership_accept_failure(
+    '00000000-0000-4000-8000-000000000005', test.id('m_invitee'),
+    'invite_email_mismatch', '00000000-0000-4000-8000-00000000ee04');
+  perform public.app_record_membership_accept_failure(
+    '00000000-0000-4000-8000-000000000005', test.id('m_invitee'),
+    'invite_email_mismatch', '00000000-0000-4000-8000-00000000ee04');
+  perform test.reset();
+  select count(*) into v_n from public.authoritative_audit_logs
+   where correlation_id = '00000000-0000-4000-8000-00000000ee04';
+  if v_n <> 1 then
+    raise exception 'TEST FAIL: SEC-86 idempotency violated, rows=%', v_n;
+  end if;
+end
+$$;
+
+-- SEC-87: 同一 correlation の success=true / false は別イベントとして両立する
+do $$
+declare v_true int; v_false int;
+begin
+  -- 成功監査（業務関数内の書込に相当）を owner 権限で模擬
+  perform public.app_write_audit(
+    'membership.accept', '00000000-0000-4000-8000-000000000005',
+    test.id('org_a'), 'organization_membership', test.id('m_invitee')::text,
+    true, null, '00000000-0000-4000-8000-00000000ee05', '{}'::jsonb);
+  perform test.as_service();
+  perform public.app_record_membership_accept_failure(
+    '00000000-0000-4000-8000-000000000005', test.id('m_invitee'),
+    'unexpected_error', '00000000-0000-4000-8000-00000000ee05');
+  perform test.reset();
+  select count(*) filter (where success), count(*) filter (where not success)
+    into v_true, v_false
+    from public.authoritative_audit_logs
+   where correlation_id = '00000000-0000-4000-8000-00000000ee05';
+  if v_true <> 1 or v_false <> 1 then
+    raise exception 'TEST FAIL: SEC-87 success/failure coexistence, true=% false=%', v_true, v_false;
+  end if;
+end
+$$;
+
 select 'SECURITY TESTS: ALL PASSED' as result;

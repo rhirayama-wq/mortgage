@@ -15,7 +15,8 @@ insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-000000000007', 'sysadmin2.fictional@example.test'),
   ('00000000-0000-4000-8000-000000000008', 'admin.c1.fictional@example.test'),
   ('00000000-0000-4000-8000-000000000009', 'admin.c2.fictional@example.test'),
-  ('00000000-0000-4000-8000-00000000000a', 'sysadmin3.fictional@example.test')
+  ('00000000-0000-4000-8000-00000000000a', 'sysadmin3.fictional@example.test'),
+  ('00000000-0000-4000-8000-00000000000b', 'sysadmin4.fictional@example.test')
 on conflict (id) do nothing;
 
 do $$
@@ -75,10 +76,11 @@ begin
   perform test.as_user(c_c2);
   perform public.app_accept_invitation(v_m);
 
-  -- 2人目・3人目の SYSTEM_ADMIN（3人目は CONC-03 / SEC-62..65 用）
+  -- 2..4人目の SYSTEM_ADMIN（3人目=CONC-03/SEC-62..65、4人目=CONC-04/SEC-76..80 用）
   perform test.as_user(c_sys);
   perform public.app_grant_system_admin(c_sys2);
   perform public.app_grant_system_admin('00000000-0000-4000-8000-00000000000a');
+  perform public.app_grant_system_admin('00000000-0000-4000-8000-00000000000b');
 
   perform test.reset();
   insert into test.ids values
@@ -114,7 +116,7 @@ begin
     raise exception 'FIXTURE FAIL: active memberships count, got %',
       (select count(*) from public.organization_memberships where status = 'active');
   end if;
-  if (select count(*) from public.user_profiles where system_role = 'SYSTEM_ADMIN') <> 3 then
+  if (select count(*) from public.user_profiles where system_role = 'SYSTEM_ADMIN') <> 4 then
     raise exception 'FIXTURE FAIL: system admin count';
   end if;
 end

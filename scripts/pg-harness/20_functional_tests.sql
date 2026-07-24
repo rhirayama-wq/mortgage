@@ -249,10 +249,11 @@ $$;
 do $$
 declare v_ok boolean := false;
 begin
-  -- U7 / U10 を revoke（3人 -> 1人）
+  -- U7 / U10 / U11 を revoke（4人 -> 1人）
   perform test.as_user('00000000-0000-4000-8000-000000000001');
   perform public.app_revoke_system_admin('00000000-0000-4000-8000-000000000007');
   perform public.app_revoke_system_admin('00000000-0000-4000-8000-00000000000a');
+  perform public.app_revoke_system_admin('00000000-0000-4000-8000-00000000000b');
   -- 最後の1人（自分）は revoke できない
   begin
     perform public.app_revoke_system_admin('00000000-0000-4000-8000-000000000001');

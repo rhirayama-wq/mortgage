@@ -67,6 +67,12 @@
 | SEC-73 | 失敗監査: metadata を受け付けるシグネチャが存在しない | PG_HARNESS_PASS |
 | SEC-74 | 許可された membership.accept 失敗監査は成功し固定値・org解決が正しい | PG_HARNESS_PASS |
 | SEC-75 | success=true を作る失敗監査経路が存在しない（旧汎用関数の不存在含む） | PG_HARNESS_PASS |
+| SEC-81 | 複数ロック関数の取得順が global(815001)→org(815002) で統一（pg_get_functiondef 静的検証） | PG_HARNESS_PASS |
+| SEC-83 | 失敗監査: membership 本人と異なる actor 指定 → audit_actor_membership_mismatch 拒否（行も残らない） | PG_HARNESS_PASS |
+| SEC-84 | 失敗監査: membership 本人の actor 指定 → 成功 | PG_HARNESS_PASS |
+| SEC-85 | membership_not_found はサーバー決定 actor で記録（org は null） | PG_HARNESS_PASS |
+| SEC-86 | 同一 correlation の同一失敗監査 2 回呼出し → 監査行 1 件（unique index + on conflict do nothing） | PG_HARNESS_PASS |
+| SEC-87 | 同一 correlation の success=true / false は別イベントとして共存 | PG_HARNESS_PASS |
 
 ## 4. DB: 並行実行（PGハーネス。実行済み）
 | ID | 内容 | 状態 |
@@ -77,6 +83,12 @@
 | SEC-63 (CONC-03) | rename のロック待機中に実行者取消 → 変更拒否 | PG_HARNESS_PASS |
 | SEC-64 (CONC-03) | archive のロック待機中に実行者取消 → 変更拒否 | PG_HARNESS_PASS |
 | SEC-65 | 上記拒否操作に success=true 監査が残らず、対象データ不変 | PG_HARNESS_PASS |
+| SEC-76 (CONC-04) | SYSTEM_ADMIN が invite のロック待機中に revoke → invite 拒否 | PG_HARNESS_PASS |
+| SEC-77 (CONC-04) | 同 role change 待機中に revoke → 変更拒否 | PG_HARNESS_PASS |
+| SEC-78 (CONC-04) | 同 suspend 待機中に revoke → suspend 拒否 | PG_HARNESS_PASS |
+| SEC-79 (CONC-04) | 同 end 待機中に revoke → end 拒否 | PG_HARNESS_PASS |
+| SEC-80 | 拒否された各操作に success=true 監査が残らず membership 不変 | PG_HARNESS_PASS |
+| SEC-82 | 並行テストがデッドロックせず所定時間内に終了（timeout 45s + lock_timeout 20s。タイムアウトは FAIL 扱い） | PG_HARNESS_PASS |
 
 ## 5. AUTH（アプリ統合。実Supabase 必要分は SUPABASE_PENDING）
 | ID | 内容 | 状態 |

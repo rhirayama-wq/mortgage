@@ -15,7 +15,10 @@ Phase 1 の目的は **認証・所属・ロール・RLS・監査を安全に完
   - `change_member_status`（許容遷移のみ）/ `change_member_role`（active時のみ）
   - `grant_system_admin` / `revoke_system_admin`
 - 並行制御: SYSTEM_ADMIN 集合はグローバル advisory xact lock、法人管理者集合は org 単位 advisory xact lock。
+  **複数ロックは必ず「グローバル → 法人」の固定順序**（SEC-81）。SYSTEM_ADMIN も実行し得る
+  法人操作（invite / role / status 変更）は両ロックを取得（SEC-76..80）。
   ロック取得後に認可・人数・状態を再確認。SELECT FOR UPDATE・許容遷移・更新1件を検証。
+  失敗監査は専用関数で actor 整合検証＋correlation 冪等（SEC-83..87）。
 - 最後の管理者(0人化)保護: 業務関数の排他制御＋DBトリガー（二重防御）。
 - 監査: 成功は業務変更と同一Tx。失敗は `record_failure_audit`（service-role別Tx）をアプリ層から呼ぶ。
 - `seed.sql`: 初回 SYSTEM_ADMIN ブートストラップ手順（架空・test only 明記、本番シークレット不使用）。

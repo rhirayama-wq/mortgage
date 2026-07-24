@@ -51,14 +51,14 @@ $PSQL -d "$DB" -f "$HERE/30_security_tests.sql"
 echo "== CONC-03 / SEC-62..65 (org management vs system-admin revoke race) =="
 # s1 が U10 の SYSTEM_ADMIN を revoke（グローバルロック保持）。
 # その間に U10 が create / rename / archive を試行 -> ロック待機後の再認可で全拒否。
-psql -X -q -d "$DB" -f "$HERE/conc3_s1.sql" >/tmp/conc3_s1.out 2>&1 &
+timeout 60 psql -X -q -d "$DB" -f "$HERE/conc3_s1.sql" >/tmp/conc3_s1.out 2>&1 &
 S1=$!
 sleep 1
-psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc3_s2a.sql" >/tmp/conc3_s2a.out 2>&1 &
+timeout 60 psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc3_s2a.sql" >/tmp/conc3_s2a.out 2>&1 &
 P2A=$!
-psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc3_s2b.sql" >/tmp/conc3_s2b.out 2>&1 &
+timeout 60 psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc3_s2b.sql" >/tmp/conc3_s2b.out 2>&1 &
 P2B=$!
-psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc3_s2c.sql" >/tmp/conc3_s2c.out 2>&1 &
+timeout 60 psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc3_s2c.sql" >/tmp/conc3_s2c.out 2>&1 &
 P2C=$!
 set +e
 wait "$P2A"; RC_A=$?
@@ -92,12 +92,71 @@ SEC65=$($PSQL_Q -d "$DB" -t -A -c "
 [ "$SEC65" = "ok" ] || { echo "TEST FAIL: SEC-65 state check = $SEC65"; exit 1; }
 echo "SEC-65 PASSED (no success audit, no data mutation from rejected ops)"
 
+echo "== CONC-04 / SEC-76..80,82 (org membership ops vs system-admin revoke race) =="
+# s1 が U11 の SYSTEM_ADMIN を revoke（グローバルロック保持）。
+# その間に U11 が invite / role change / suspend / end を試行。
+# 全操作は global -> org のロック順で待機し、再認可で not_authorized 拒否される。
+# SEC-82: timeout(45s) と lock_timeout(20s) により、デッドロック・無期限待機を PASS 扱いにしない。
+timeout 45 psql -X -q -d "$DB" -f "$HERE/conc4_s1.sql" >/tmp/conc4_s1.out 2>&1 &
+S1=$!
+sleep 1
+timeout 45 psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc4_s2a.sql" >/tmp/conc4_s2a.out 2>&1 &
+P2A=$!
+timeout 45 psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc4_s2b.sql" >/tmp/conc4_s2b.out 2>&1 &
+P2B=$!
+timeout 45 psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc4_s2c.sql" >/tmp/conc4_s2c.out 2>&1 &
+P2C=$!
+timeout 45 psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc4_s2d.sql" >/tmp/conc4_s2d.out 2>&1 &
+P2D=$!
+set +e
+wait "$P2A"; RC_A=$?
+wait "$P2B"; RC_B=$?
+wait "$P2C"; RC_C=$?
+wait "$P2D"; RC_D=$?
+wait "$S1"; RC_S1=$?
+set -e
+[ "$RC_S1" -eq 0 ] || { echo "TEST FAIL: CONC-04 s1 revoke failed/timed out (rc=$RC_S1)"; cat /tmp/conc4_s1.out; exit 1; }
+for pair in "SEC-76:$RC_A:/tmp/conc4_s2a.out" "SEC-77:$RC_B:/tmp/conc4_s2b.out" \
+            "SEC-78:$RC_C:/tmp/conc4_s2c.out" "SEC-79:$RC_D:/tmp/conc4_s2d.out"; do
+  ID="${pair%%:*}"; REST="${pair#*:}"; RC="${REST%%:*}"; OUT="${REST#*:}"
+  if [ "$RC" -eq 124 ]; then
+    echo "TEST FAIL: $ID timed out (possible deadlock / unbounded wait)"; cat "$OUT"; exit 1
+  fi
+  if [ "$RC" -eq 0 ]; then
+    echo "TEST FAIL: $ID operation should have been rejected"; cat "$OUT"; exit 1
+  fi
+  if grep -Eq 'lock timeout|deadlock' "$OUT"; then
+    echo "TEST FAIL: $ID hit lock_timeout/deadlock instead of re-authorization"; cat "$OUT"; exit 1
+  fi
+  grep -q 'not_authorized' "$OUT" || {
+    echo "TEST FAIL: $ID unexpected error:"; cat "$OUT"; exit 1; }
+  echo "$ID PASSED (rejected with not_authorized after lock wait)"
+done
+# SEC-80: 拒否操作の success=true 監査が無く、対象 membership が不変であること
+SEC80=$($PSQL_Q -d "$DB" -t -A -c "
+  select case
+    when exists (select 1 from public.authoritative_audit_logs
+                  where actor_user_id = '00000000-0000-4000-8000-00000000000b'
+                    and action in ('membership.invite','membership.change_role',
+                                   'membership.suspend','membership.end')
+                    and success = true) then 'forged_success_audit'
+    when (select status || ':' || role from public.organization_memberships
+           where id = test.id('m_s1')) <> 'active:SALES_USER' then 'm_s1_mutated'
+    when (select status from public.organization_memberships
+           where id = test.id('m_a2')) <> 'active' then 'm_a2_mutated'
+    when (select status from public.organization_memberships
+           where id = test.id('m_invitee')) <> 'invited' then 'm_invitee_mutated'
+    else 'ok' end")
+[ "$SEC80" = "ok" ] || { echo "TEST FAIL: SEC-80 state check = $SEC80"; exit 1; }
+echo "SEC-80 PASSED (no success audit, no membership mutation from rejected ops)"
+echo "SEC-82 PASSED (all CONC-04 sessions finished within timeout, no deadlock)"
+
 echo "== CONC-01 (org last-admin race) =="
-psql -X -q -d "$DB" -f "$HERE/conc1_s1.sql" >/tmp/conc1_s1.out 2>&1 &
+timeout 60 psql -X -q -d "$DB" -f "$HERE/conc1_s1.sql" >/tmp/conc1_s1.out 2>&1 &
 S1=$!
 sleep 1
 set +e
-psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc1_s2.sql" >/tmp/conc1_s2.out 2>&1
+timeout 60 psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc1_s2.sql" >/tmp/conc1_s2.out 2>&1
 S2_RC=$?
 set -e
 wait "$S1"
@@ -114,11 +173,11 @@ REMAIN=$($PSQL_Q -d "$DB" -t -A -c \
 echo "CONC-01 PASSED"
 
 echo "== CONC-02 (system admin revoke race) =="
-psql -X -q -d "$DB" -f "$HERE/conc2_s1.sql" >/tmp/conc2_s1.out 2>&1 &
+timeout 60 psql -X -q -d "$DB" -f "$HERE/conc2_s1.sql" >/tmp/conc2_s1.out 2>&1 &
 S1=$!
 sleep 1
 set +e
-psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc2_s2.sql" >/tmp/conc2_s2.out 2>&1
+timeout 60 psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc2_s2.sql" >/tmp/conc2_s2.out 2>&1
 S2_RC=$?
 set -e
 wait "$S1"
