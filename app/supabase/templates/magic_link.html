@@ -1,0 +1,11 @@
+<!-- FICTIONAL / LOCAL DEV TEMPLATE — token_hash SSR フロー用 Magic Link メール
+     callback は /auth/callback?token_hash=...&type=email のみ受理する（AUTH-07）。
+     本番導入時は文言・デザイン・ドメインを見直すこと。 -->
+<h2>ログイン用リンク</h2>
+<p>以下のリンクからログインしてください。リンクには有効期限があります。</p>
+<p>
+  <a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=email"
+    >ログインする</a
+  >
+</p>
+<p>心当たりがない場合は、このメールを破棄してください。</p>

@@ -87,6 +87,9 @@
 | U15 | Magic Link 再送クールダウンの実効性 | Cookie ベース（httpOnly, 60秒, タイムスタンプのみ保存・メールアドレスは保存もログもしない）。**クライアント協調型でありサーバー側レート制限ではない**（Cookie 破棄で回避可能・複数インスタンス非共有）。実防御は GoTrue 側のメール送信レート制限に依存。サーバー側レート制限（正規化メールの HMAC キー等）は Post-MVP 課題 |
 | U16 | package-lock.json | 本サンドボックスはレジストリ不通のため**生成不能・未コミット**。最初に `npm install` 可能な環境で lockfile を生成しコミットすること。それまで CI の `npm ci` ジョブは失敗する（既知・意図的に隠さない） |
 | U18 | 法人操作のグローバルロック性能 | Phase 1 は安全性と単純なロック順序を優先し、SYSTEM_ADMIN も実行し得る法人操作（invite/role/status）は常に「グローバル→法人」の両ロックを取得（ORGANIZATION_ADMIN 操作も一時的にグローバルロックを通過）。将来スループットが問題になった場合、actor の権限種別を安全に判定してロックを分岐する設計を別途検討する |
+| U19 | 法人ロックキーの hashtext 衝突可能性 | (815002, hashtext(org_id::text)) は int4 空間へのハッシュのため、異なる法人が同一ロックキーへ衝突し得る（誤った直列化=安全側だが性能影響）。正当性は FOR UPDATE と状態再確認で担保済み。将来、法人数増加で問題になれば hashtextextended + (int,int) 分割等へ移行を検討（technical debt・非ブロッキング） |
+| U20 | correlation ID のサーバー契約 | correlation ID は「1業務操作（1リクエスト）につき一意」をサーバー側契約とする（crypto.randomUUID をリクエスト毎に生成。リトライ時のみ同一値を再送し冪等 index が重複を抑止）。クライアントから correlation を受け取らない（technical debt として契約を明文化） |
+| U21 | 監査テーブルへの将来 unique 制約追加時の注意 | 専用失敗監査関数は ON CONFLICT DO NOTHING（無指定ターゲット）のため、将来 authoritative_audit_logs へ別の unique 制約/インデックスを追加すると、意図しない衝突まで無視される。追加時は ON CONFLICT のターゲットを (correlation_id, action, success) 明示指定へ見直すこと（technical debt・非ブロッキング） |
 | U17 | SALES_USER への同僚表示名の開示 | 2026-07-24 レビューで user_profiles の同一法人相互可視を撤回（SALES_USER に email 等を露出するため）。現行: 本人＋ORGANIZATION_ADMIN＋SYSTEM_ADMIN のみ。案件担当者名表示等で SALES_USER に表示名が必要になった場合は、user_id と display_name のみを返す専用ビュー/関数を追加する（user_profiles 全体は開けない） |
 | U14 | shadcn/ui の導入時期 | Phase 1 画面は素の Tailwind（CLI がレジストリ遮断で実行不可、かつ §5「不要な依存追加禁止」）。Phase 2 フォーム群から導入 |
 

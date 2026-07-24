@@ -7,7 +7,8 @@
 **開発ルールの最上位は `CLAUDE.md`。作業開始時は必ず CLAUDE.md → README → /docs の順に読むこと。**
 
 ## 現在地（2026-07-24）
-- Phase 1（認証・所属・RLS・監査）を再構築中。
+- **Phase 1A DB 層: PostgreSQLハーネス上の静的・並行レビュー完了として承認済み**（Phase 1 全体は継続中）。
+- Phase 1（認証・所属・RLS・監査）を再構築中。残作業は docs/phase1-remaining-runbook.md。
 - DB 層: migration v6 相当を PGハーネス（PostgreSQL 16.13）で検証済み。
 - 認証アプリ層: 6 ブロッカー修正済みの形で実装済み。
 - 実 Supabase（PostgREST/GoTrue/Inbucket）検証は未了 → docs/phase1-validation.md。

@@ -2,6 +2,14 @@
 
 実施日: 2026-07-24 / 環境: クラウドサンドボックス（Docker 不可・npm レジストリ遮断）
 
+> **レビュー承認（2026-07-24）**: Phase 1A DB 層は
+> 「PostgreSQL ハーネス上の静的・RLS・GRANT・状態遷移・監査・並行実行レビュー完了」として承認済み
+> （migration の SHA-256 一致・終了コード0・SEC-62..87 を含む全テスト PASS をレビュアーが実ファイルで確認）。
+> **これは Phase 1 全体の完了ではない。** 正式 npm verify / lockfile / CI / 実 Supabase local /
+> PostgREST / GoTrue / Inbucket / Magic Link 実環境 / Cookie 実機 / E2E は PENDING、Phase 1 は継続中、
+> Phase 2 未着手。残作業の手順は docs/phase1-remaining-runbook.md。
+> 非ブロッキングの将来課題は assumptions.md U18..U21 に記録。
+
 ## 1. 実行済み検証
 
 ### 1.1 PGハーネス（PostgreSQL 16.13 + 擬似 Supabase ロール/auth スキーマ）
