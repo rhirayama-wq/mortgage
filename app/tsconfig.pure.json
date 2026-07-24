@@ -1,0 +1,23 @@
+{
+  "//": "依存ゼロの純粋モジュールのみを対象とした部分 typecheck。npm レジストリ不通環境でも strict 検証を可能にする。完全な typecheck (tsconfig.json) の代替ではない。",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": [
+    "src/lib/units/bps.ts",
+    "src/lib/auth/errors.ts",
+    "src/lib/auth/validators.ts",
+    "src/lib/auth/safe-next.ts",
+    "src/lib/auth/otp.ts",
+    "src/lib/auth/access.ts"
+  ]
+}

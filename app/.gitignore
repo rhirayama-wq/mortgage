@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+
+# env: 実キー・シークレットはコミット禁止（CLAUDE.md §23, §33）
+.env
+.env.local
+.env.*.local
+
+# test artifacts
+playwright-report/
+test-results/
+coverage/

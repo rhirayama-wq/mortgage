@@ -70,7 +70,8 @@ scripts/pg-harness/... (psql による SQL レベル検証)
 
 ## 4. テスト計画（定義済み/実行済み/未実行を区別）
 - **UNIT**: bps 変換、access.ts 純粋判定（active/invited/none/suspended/left × SYSTEM_ADMIN 有無 → 遷移先）、
-  Zod スキーマ（email、OTP type、next 安全性）。→ 本環境で実行可能。
+  明示的実行時検証（email、OTP type、next 安全性、membership/profile 行）。→ 本環境で実行済み
+  （ランナーは U13 暫定で node:test + tsx。Zod は U11 により Phase 2 導入）。
 - **AUTH-01..20**: 応答差防止・email検証・shouldCreateUser=false・open redirect 防止・安全next復元・OTP type・
   失効リンク・Cookie保存/refresh・DBエラー・route直アクセス・ロール別認可・他法人ID・POST signout・リンク再利用・
   招待メール一致・複数法人。→ ロジック単体は本環境、Cookie/refresh/リンク再利用/メール送信は **SUPABASE_PENDING**。

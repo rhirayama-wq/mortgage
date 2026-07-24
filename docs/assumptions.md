@@ -10,7 +10,11 @@
   可能ならユーザーの端末フォルダまたは git リモートへ保存する（未確定: 保存先）。
 
 ## 1. 環境制約（本クラウドサンドボックス）
-- Node v22 / npm 10 / psql(client) 16.13 利用可。
+- Node v22 / npm 10 / psql 16.13 / PostgreSQL 16.13 サーバ（ローカル起動）/ tsc 6.0.3 / eslint 10 / tsx 4.21 利用可。
+- **npm・PyPI・apt レジストリへのエグレスが遮断**（host_not_allowed）。`npm install` 不可
+  → next/@supabase 等の node_modules を要する typecheck・lint・build は本環境で実行不能。
+  依存ゼロの純粋モジュール検証（tsc + node:test）と PostgreSQL ハーネスで代替し、
+  残りは `npm run verify` を npm 取得可能環境で実行する。
 - **Docker は利用不可**（デーモン未起動）。**Supabase CLI 未導入**。
   → `supabase start` に依存する **PostgREST / GoTrue / Inbucket / Magic Link / 実JWT 検証は本環境では実行不可**。
   → 実Supabaseローカル検証は Docker 可能環境（ユーザーの Mac に Docker Desktop、または CI）で行う必要がある。
@@ -75,6 +79,12 @@
 | U6 | 案件・結果 CSV 出力を MVP に含めるか | 暫定: 含めない（Post-MVP） |
 | U7 | CSV 更新照合の自然キー | 未定。商品CSVは Phase 2 で設計。lender_code + product_code + version_effective_from を候補 |
 | U8 | 法人がルール閾値自体を override する要件の有無 | 暫定: 無し（表示可否・推奨順位・金利等の表層オーバーレイのみ）。閾値overrideは要件確認後 |
+| U9 | 招待は既存 auth ユーザーのみ対象（shouldCreateUser=false 前提。ユーザー作成は SYSTEM_ADMIN が admin API で実施） | invite 関数は未登録メールへ invited_user_not_found を返す。法人管理者へアカウント存在が伝わるが、内部業務ツールとして許容。要最終確認 |
+| U10 | 同一法人からの left 後の再招待 | unique(org,user) + left 終端のため MVP では不可。要件が出たら遷移設計を再検討 |
+| U11 | Zod の導入時期 | CLAUDE.md §7 は「Zodまたは明示的実行時検証」を許容。Phase 1 は依存ゼロの明示検証（validators.ts）で実装（レジストリ遮断下でも実テスト可能なため）。Phase 2 のフォーム実装時に Zod + RHF を導入 |
+| U12 | ORGANIZATION_ADMIN の監査ログ閲覧範囲 | 暫定: 自法人分のみ閲覧可（RLS で制限）。要プロダクト確認 |
+| U13 | unit test ランナー | 暫定: node:test + tsx（依存ゼロで本環境実行可能）。Vitest への移行は npm 取得可能環境で判断。テスト資産は API 互換に近い形で記述済み |
+| U14 | shadcn/ui の導入時期 | Phase 1 画面は素の Tailwind（CLI がレジストリ遮断で実行不可、かつ §5「不要な依存追加禁止」）。Phase 2 フォーム群から導入 |
 
 ## 3.1 CLAUDE.md 内の既知の不整合（CLAUDE.md §1 に基づく記録）
 | # | 箇所 | 問題 | 扱い |
