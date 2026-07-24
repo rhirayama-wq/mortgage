@@ -65,7 +65,7 @@ UPDATE/DELETE はトリガーで全ロール拒否（superuser 含む）。
 - `membership_status`: invited, active, suspended, left
 
 ## RLS（詳細は security.md）
-- user_profiles: 本人 / SYSTEM_ADMIN / 同一法人 active メンバー（definer helper 経由）
+- user_profiles: 本人 / SYSTEM_ADMIN / 当該法人の active ORGANIZATION_ADMIN（definer helper `app_can_administer_profile`。SALES_USER は他人の行を参照不可）
 - organizations: 所属者（invited/active/suspended）と SYSTEM_ADMIN のみ SELECT
 - organization_memberships: 本人 / 当該法人 ORGANIZATION_ADMIN / SYSTEM_ADMIN
 - authoritative_audit_logs: SYSTEM_ADMIN 全件、ORGANIZATION_ADMIN 自法人分

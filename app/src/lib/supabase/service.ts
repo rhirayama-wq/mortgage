@@ -1,6 +1,6 @@
 /**
  * service_role クライアント（サーバー専用）。
- * 用途は失敗監査 (app_record_failure_audit) の別トランザクション記録のみ
+ * 用途は失敗監査 (app_record_membership_accept_failure 等の専用関数) の別トランザクション記録のみ
  * （CLAUDE.md §19）。RLS バイパス能力を持つため、他用途へ流用しない。
  */
 

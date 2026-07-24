@@ -11,7 +11,10 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isUuid } from "@/lib/auth/validators";
-import { recordFailureAudit, toSafeErrorCode } from "@/lib/auth/audit";
+import {
+  recordMembershipAcceptFailure,
+  toSafeErrorCode,
+} from "@/lib/auth/audit";
 
 export async function acceptInvitation(formData: FormData): Promise<void> {
   const membershipId = String(formData.get("membershipId") ?? "");
@@ -35,13 +38,11 @@ export async function acceptInvitation(formData: FormData): Promise<void> {
   });
 
   if (error) {
-    // 失敗監査は別トランザクション（DB 例外で本体はロールバック済み）
-    await recordFailureAudit({
-      action: "membership.accept",
+    // 失敗監査は別トランザクション（DB 例外で本体はロールバック済み）。
+    // action / resource_type / success / organization_id は DB 側で固定・解決される。
+    await recordMembershipAcceptFailure({
       actorUserId: user.id,
-      organizationId: null, // クライアント申告値を信頼しない（DB 側で解決不能なため null）
-      resourceType: "organization_membership",
-      resourceId: membershipId,
+      membershipId,
       errorCode: toSafeErrorCode(error),
       correlationId,
     });

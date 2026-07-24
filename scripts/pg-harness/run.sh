@@ -48,6 +48,50 @@ $PSQL -d "$DB" -f "$HERE/20_functional_tests.sql"
 echo "== 30 security tests =="
 $PSQL -d "$DB" -f "$HERE/30_security_tests.sql"
 
+echo "== CONC-03 / SEC-62..65 (org management vs system-admin revoke race) =="
+# s1 が U10 の SYSTEM_ADMIN を revoke（グローバルロック保持）。
+# その間に U10 が create / rename / archive を試行 -> ロック待機後の再認可で全拒否。
+psql -X -q -d "$DB" -f "$HERE/conc3_s1.sql" >/tmp/conc3_s1.out 2>&1 &
+S1=$!
+sleep 1
+psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc3_s2a.sql" >/tmp/conc3_s2a.out 2>&1 &
+P2A=$!
+psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc3_s2b.sql" >/tmp/conc3_s2b.out 2>&1 &
+P2B=$!
+psql -X -q -v ON_ERROR_STOP=1 -d "$DB" -f "$HERE/conc3_s2c.sql" >/tmp/conc3_s2c.out 2>&1 &
+P2C=$!
+set +e
+wait "$P2A"; RC_A=$?
+wait "$P2B"; RC_B=$?
+wait "$P2C"; RC_C=$?
+set -e
+wait "$S1"
+for pair in "SEC-62:$RC_A:/tmp/conc3_s2a.out" "SEC-63:$RC_B:/tmp/conc3_s2b.out" "SEC-64:$RC_C:/tmp/conc3_s2c.out"; do
+  ID="${pair%%:*}"; REST="${pair#*:}"; RC="${REST%%:*}"; OUT="${REST#*:}"
+  if [ "$RC" -eq 0 ]; then
+    echo "TEST FAIL: $ID operation should have been rejected"; cat "$OUT"; exit 1
+  fi
+  grep -q 'not_authorized' "$OUT" || {
+    echo "TEST FAIL: $ID unexpected error:"; cat "$OUT"; exit 1; }
+  echo "$ID PASSED (rejected with not_authorized after lock wait)"
+done
+# SEC-65: 拒否された操作の success=true 監査が存在せず、対象データが不変であること
+SEC65=$($PSQL_Q -d "$DB" -t -A -c "
+  select case
+    when exists (select 1 from public.organizations
+                  where name like 'SEC-62%' or name like 'SEC-63%') then 'org_mutated'
+    when (select name from public.organizations where id = test.id('org_a'))
+         <> 'Fictional Org A (test only)' then 'org_a_renamed'
+    when (select archived_at from public.organizations where id = test.id('org_a'))
+         is not null then 'org_a_archived'
+    when exists (select 1 from public.authoritative_audit_logs
+                  where actor_user_id = '00000000-0000-4000-8000-00000000000a'
+                    and action in ('organization.create','organization.rename','organization.archive')
+                    and success = true) then 'forged_success_audit'
+    else 'ok' end")
+[ "$SEC65" = "ok" ] || { echo "TEST FAIL: SEC-65 state check = $SEC65"; exit 1; }
+echo "SEC-65 PASSED (no success audit, no data mutation from rejected ops)"
+
 echo "== CONC-01 (org last-admin race) =="
 psql -X -q -d "$DB" -f "$HERE/conc1_s1.sql" >/tmp/conc1_s1.out 2>&1 &
 S1=$!

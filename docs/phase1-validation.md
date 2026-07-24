@@ -8,7 +8,11 @@
 - `scripts/pg-harness/run.sh` により migration `0001_phase1_identity_org_rls.sql` を
   `ON_ERROR_STOP` で適用 → 成功。
 - seed.sql（架空ブートストラップ）適用 → 成功。
-- **FUNC-01..16 / SEC-01..16 / CONC-01..02: 全て PASS**（test-cases.md 参照）。
+- **FUNC-01..16 / SEC-01..09,11..16 / SEC-62..75 / CONC-01..03: 全て PASS**（test-cases.md 参照）。
+  - 2026-07-24 レビュー対応で追加: SEC-62..65（法人管理関数の SYSTEM_ADMIN 集合ロック＋ロック後再認可の並行検証）、
+    SEC-66..70（user_profiles の SALES_USER 越権遮断）、SEC-71..75（専用失敗監査関数の DB 側制約）。
+  - SEC-10（旧: 同一法人メンバー相互のプロフィール可視）は SALES_USER への email 露出のため**仕様ごと撤回**し、
+    SEC-66..70 に置換。
 - 実行コマンド: `PGHOST=/tmp PGPORT=5433 PGUSER=postgres bash scripts/pg-harness/run.sh`
 
 ### 1.2 アプリ純粋ロジック
@@ -37,6 +41,17 @@ unit test は依存ゼロ構成のため本環境でも実行済み（1.2）。
 - service_role の BYPASSRLS はハーネスで付与したが、実 Supabase の権限構成
   との差異があり得る。
 - Magic Link の有効期限・ワンタイム性は GoTrue の挙動であり SQL 層では検証不能。
+
+## 3.5 現在の状態一覧（レビュー項目5対応・正確な区分）
+| 項目 | 状態 |
+|---|---|
+| Phase 0 コード | 再構築済み（成果物レビュー中） |
+| pure typecheck | 実行済み PASS（tsc 6.0.3・本環境） |
+| offline unit (41件) | 実行済み PASS（`npm run test:offline`・本環境） |
+| 正式 `npm run verify`（typecheck/lint/Vitest/build） | **PENDING**（npm 利用可能環境で実行） |
+| CI | **定義済みだが未成立**（package-lock.json 未生成のため npm ci が失敗） |
+| package-lock.json 生成 | **PENDING** |
+| 実 Supabase local | **PENDING**（Docker 必須） |
 
 ## 4. Phase 1 受入条件との対応（12.2）
 | 受入条件 | 状態 |

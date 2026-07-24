@@ -11,6 +11,8 @@
 - DB 層: migration v6 相当を PGハーネス（PostgreSQL 16.13）で検証済み。
 - 認証アプリ層: 6 ブロッカー修正済みの形で実装済み。
 - 実 Supabase（PostgREST/GoTrue/Inbucket）検証は未了 → docs/phase1-validation.md。
+- **CI は定義済みだが未成立**（package-lock.json 未生成。npm 利用可能環境で `npm install` → lockfile コミットが必要）。
+- 正式な `npm run verify`（typecheck/lint/Vitest/build）も同環境待ち。本環境実績は pure typecheck と offline unit のみ。
 
 ## 構成
 ```text

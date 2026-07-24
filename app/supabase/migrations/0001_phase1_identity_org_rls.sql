@@ -93,7 +93,7 @@ create index authoritative_audit_logs_org_idx
   on public.authoritative_audit_logs (organization_id, occurred_at desc);
 
 comment on table public.authoritative_audit_logs is
-  'Append-only authoritative audit. Success rows are written inside business functions (same tx). Failure rows are written by the server via app_record_failure_audit (separate tx, service_role). No PII bodies / financial details / JWT / secrets in metadata.';
+  'Append-only authoritative audit. Success rows are written inside business functions (same tx). Failure rows are written by the server via dedicated per-action functions (e.g. app_record_membership_accept_failure; separate tx, service_role only). No PII bodies / financial details / JWT / secrets in metadata.';
 
 -- ---------------------------------------------------------------------------
 -- 3. auth.users -> user_profiles 同期トリガー
@@ -361,8 +361,9 @@ as $$
   );
 $$;
 
--- 同一法人の active メンバー同士のみ、互いのプロフィール(表示名)を参照できる
-create function public.app_shares_active_org(p_user_id uuid)
+-- 閲覧者が対象ユーザーの所属法人の active ORGANIZATION_ADMIN である場合のみ true。
+-- SALES_USER には他ユーザーの user_profiles 行（email 等）を開示しない（SEC-66..70）。
+create function public.app_can_administer_profile(p_user_id uuid)
 returns boolean
 language sql
 stable
@@ -371,13 +372,14 @@ set search_path = ''
 as $$
   select exists (
     select 1
-      from public.organization_memberships mine
-      join public.organization_memberships theirs
-        on theirs.organization_id = mine.organization_id
-     where mine.user_id = auth.uid()
-       and mine.status = 'active'
-       and theirs.user_id = p_user_id
-       and theirs.status in ('invited', 'active', 'suspended')
+      from public.organization_memberships admin_m
+      join public.organization_memberships target_m
+        on target_m.organization_id = admin_m.organization_id
+     where admin_m.user_id = auth.uid()
+       and admin_m.status = 'active'
+       and admin_m.role = 'ORGANIZATION_ADMIN'
+       and target_m.user_id = p_user_id
+       and target_m.status in ('invited', 'active', 'suspended')
   );
 $$;
 
@@ -398,9 +400,10 @@ create policy user_profiles_select_system_admin on public.user_profiles
   for select to authenticated
   using (public.app_is_system_admin());
 
-create policy user_profiles_select_same_org on public.user_profiles
+-- ORGANIZATION_ADMIN のみ自法人メンバーの profile を閲覧可（SALES_USER は本人分のみ）
+create policy user_profiles_select_org_admin on public.user_profiles
   for select to authenticated
-  using (public.app_shares_active_org(id));
+  using (public.app_can_administer_profile(id));
 
 create policy user_profiles_update_own on public.user_profiles
   for update to authenticated
@@ -479,27 +482,62 @@ end;
 $$;
 
 -- 失敗監査: サーバー(service_role)が例外捕捉後、別トランザクションで記録する。
-create function public.app_record_failure_audit(
-  p_action          text,
-  p_actor_user_id   uuid,
-  p_organization_id uuid,
-  p_resource_type   text,
-  p_resource_id     text,
-  p_error_code      text,
-  p_correlation_id  uuid,
-  p_metadata        jsonb default '{}'::jsonb
+-- Phase 1 で必要な失敗監査は membership.accept のみのため、汎用関数は置かず
+-- 専用関数とする（action / resource_type / success はDB側で固定、error_code は
+-- 許可リスト検証、metadata は受け付けない。SEC-71..75）。
+create function public.app_record_membership_accept_failure(
+  p_actor_user_id  uuid,
+  p_membership_id  uuid,
+  p_error_code     text,
+  p_correlation_id uuid
 ) returns void
 language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  c_allowed_error_codes constant text[] := array[
+    'not_authorized',
+    'invite_email_mismatch',
+    'membership_not_found',
+    'membership_invalid_transition',
+    'membership_left_terminal',
+    'organization_not_found_or_archived',
+    'unexpected_error'
+  ];
+  v_organization_id uuid;
 begin
-  if p_action is null or length(btrim(p_action)) = 0 then
-    raise exception 'audit_action_required' using errcode = '22023';
+  if p_actor_user_id is null then
+    raise exception 'audit_actor_required' using errcode = '22023';
   end if;
+  if p_membership_id is null then
+    raise exception 'audit_membership_id_required' using errcode = '22023';
+  end if;
+  if p_correlation_id is null then
+    raise exception 'audit_correlation_required' using errcode = '22023';
+  end if;
+  if p_error_code is null
+     or length(p_error_code) > 64
+     or not (p_error_code = any (c_allowed_error_codes)) then
+    raise exception 'audit_error_code_not_allowed' using errcode = '22023';
+  end if;
+
+  -- organization_id はクライアント申告ではなく DB 側で解決（存在しない場合は null）
+  select organization_id into v_organization_id
+    from public.organization_memberships
+   where id = p_membership_id;
+
+  -- action / resource_type / success / metadata は呼出し側から変更不能（固定値）
   perform public.app_write_audit(
-    p_action, p_actor_user_id, p_organization_id, p_resource_type, p_resource_id,
-    false, p_error_code, p_correlation_id, p_metadata);
+    'membership.accept',
+    p_actor_user_id,
+    v_organization_id,
+    'organization_membership',
+    p_membership_id::text,
+    false,
+    p_error_code,
+    p_correlation_id,
+    '{}'::jsonb);
 end;
 $$;
 
@@ -525,6 +563,9 @@ declare
   v_actor uuid := auth.uid();
   v_org_id uuid;
 begin
+  -- SYSTEM_ADMIN 集合ロックを先に取得し、取得後に認可を再確認する（SEC-62）
+  perform pg_advisory_xact_lock(815001, 1);
+
   if not public.app_is_system_admin() then
     raise exception 'not_authorized' using errcode = '42501';
   end if;
@@ -557,6 +598,9 @@ declare
   v_actor uuid := auth.uid();
   v_count int;
 begin
+  -- SYSTEM_ADMIN 集合ロックを先に取得し、取得後に認可を再確認する（SEC-63）
+  perform pg_advisory_xact_lock(815001, 1);
+
   if not public.app_is_system_admin() then
     raise exception 'not_authorized' using errcode = '42501';
   end if;
@@ -597,6 +641,9 @@ declare
   v_actor uuid := auth.uid();
   v_count int;
 begin
+  -- SYSTEM_ADMIN 集合ロックを先に取得し、取得後に認可を再確認する（SEC-64）
+  perform pg_advisory_xact_lock(815001, 1);
+
   if not public.app_is_system_admin() then
     raise exception 'not_authorized' using errcode = '42501';
   end if;
@@ -1068,12 +1115,12 @@ revoke execute on function public.app_org_last_admin_backstop()                 
 revoke execute on function public.app_last_system_admin_backstop()                    from public, anon, authenticated, service_role;
 revoke execute on function public.app_audit_append_only()                             from public, anon, authenticated, service_role;
 revoke execute on function public.app_write_audit(text, uuid, uuid, text, text, boolean, text, uuid, jsonb) from public, anon, authenticated, service_role;
-revoke execute on function public.app_record_failure_audit(text, uuid, uuid, text, text, text, uuid, jsonb) from public, anon, authenticated, service_role;
+revoke execute on function public.app_record_membership_accept_failure(uuid, uuid, text, uuid) from public, anon, authenticated, service_role;
 revoke execute on function public.app_is_system_admin()                               from public, anon;
 revoke execute on function public.app_is_org_admin(uuid)                              from public, anon;
 revoke execute on function public.app_is_active_member(uuid)                          from public, anon;
 revoke execute on function public.app_is_member_any_live_status(uuid)                 from public, anon;
-revoke execute on function public.app_shares_active_org(uuid)                         from public, anon;
+revoke execute on function public.app_can_administer_profile(uuid)                    from public, anon;
 revoke execute on function public.app_create_organization(text, uuid)                 from public, anon;
 revoke execute on function public.app_rename_organization(uuid, text, uuid)           from public, anon;
 revoke execute on function public.app_archive_organization(uuid, uuid)                from public, anon;
@@ -1093,7 +1140,7 @@ grant execute on function public.app_is_system_admin()               to authenti
 grant execute on function public.app_is_org_admin(uuid)              to authenticated;
 grant execute on function public.app_is_active_member(uuid)          to authenticated;
 grant execute on function public.app_is_member_any_live_status(uuid) to authenticated;
-grant execute on function public.app_shares_active_org(uuid)         to authenticated;
+grant execute on function public.app_can_administer_profile(uuid)    to authenticated;
 
 -- 公開業務関数（内部で認可を自己検証する）
 grant execute on function public.app_create_organization(text, uuid)                 to authenticated;
@@ -1109,6 +1156,6 @@ grant execute on function public.app_grant_system_admin(uuid, uuid)             
 grant execute on function public.app_revoke_system_admin(uuid, uuid)                 to authenticated;
 
 -- 失敗監査はサーバー(service_role)のみ
-grant execute on function public.app_record_failure_audit(text, uuid, uuid, text, text, text, uuid, jsonb) to service_role;
+grant execute on function public.app_record_membership_accept_failure(uuid, uuid, text, uuid) to service_role;
 
 commit;

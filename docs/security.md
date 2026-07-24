@@ -15,12 +15,12 @@
 全テーブルで `revoke all ... from anon, authenticated, service_role` 後に:
 - authenticated: SELECT（RLS 適用）＋ user_profiles.display_name の列 UPDATE のみ
 - anon: なし
-- service_role: 直接テーブル権限なし（`app_record_failure_audit` の EXECUTE のみ）
+- service_role: 直接テーブル権限なし（`app_record_membership_accept_failure` の EXECUTE のみ）
 
-## 3. RLS ポリシー一覧
+## 3. RLS ポリシー一覧（計10本・SELECT 9 / UPDATE 1）
 | テーブル | SELECT | 書込 |
 |---|---|---|
-| user_profiles | 本人 or SYSTEM_ADMIN or 同一法人メンバー | UPDATE 本人のみ（display_name 列 GRANT と併用） |
+| user_profiles | 本人 or SYSTEM_ADMIN or **当該法人の active ORGANIZATION_ADMIN**（`app_can_administer_profile`。SALES_USER は他人の行＝email 等を取得不可: SEC-66..70） | UPDATE 本人のみ（display_name 列 GRANT と併用） |
 | organizations | invited/active/suspended 所属者 or SYSTEM_ADMIN | ポリシーなし（業務関数のみ） |
 | organization_memberships | 本人 or 当該法人 org admin or SYSTEM_ADMIN | ポリシーなし |
 | authoritative_audit_logs | SYSTEM_ADMIN 全件 / org admin 自法人 | ポリシーなし（追記は definer 関数内） |
@@ -28,21 +28,29 @@
 ヘルパー（app_is_system_admin 等）は SECURITY DEFINER・search_path='' で RLS 再帰を回避。
 NULL 三値論理: system_role 比較は `is not distinct from` を使用。
 
-## 4. 業務関数の並行制御（SEC-61..64 対応）
-実行順序（全書込関数で統一）:
-1. `pg_advisory_xact_lock`（SYSTEM_ADMIN 集合=グローバル (815001,1) / 法人=(815002, hashtext(org_id))）
-2. **ロック取得後に認可を再確認**（認可確認後にロック待ちしない）
-3. 対象行 `SELECT ... FOR UPDATE`
+## 4. 業務関数の並行制御（SEC-62..65 / CONC-01..03 で検証済み）
+実行順序:
+1. `pg_advisory_xact_lock`（下表のロック種別）
+2. **ロック取得後に認可を確認**（認可確認後にロック待ちしない）
+3. 対象行がある操作は `SELECT ... FOR UPDATE`
 4. 状態・遷移・人数の再確認（最後の管理者保護）
 5. 更新 → `GET DIAGNOSTICS row_count = 1` 検証
 6. 成功監査を同一トランザクションで記録
+
+| ロック | キー | 対象関数 |
+|---|---|---|
+| SYSTEM_ADMIN 集合（グローバル） | (815001, 1) | app_create_organization / app_rename_organization / app_archive_organization / app_grant_system_admin / app_revoke_system_admin / app_bootstrap_first_system_admin |
+| 法人管理者集合（法人単位） | (815002, hashtext(org_id)) | app_invite_organization_member / app_accept_invitation / app_change_member_role / app_suspend_member / app_reactivate_member / app_end_membership（実体: app_change_member_status） |
+
+ロックを取らない関数: RLSヘルパー（読取のみ）・トリガー関数・app_write_audit（呼出し元業務関数のロック内で実行）・app_record_membership_accept_failure（追記専用・競合対象なし）。
 
 トリガー（membership_guard / last-admin backstops / audit append-only）は二重防御であり、並行競合の主防御ではない。
 
 ## 5. 監査
 - 成功: 業務関数内で同一 Tx（`app_write_audit`）。actor は auth.uid() から決定。クライアントは actor/success/action を指定できない。
-- 失敗: DB 例外で Tx ごとロールバック → **サーバー（Server Action）が例外捕捉し、service_role で `app_record_failure_audit` を別 Tx 実行**（実装: `src/lib/auth/audit.ts`, 呼出: `pending-invitation/actions.ts`）。
-- metadata に PII 本文・財務情報・JWT・秘密情報を入れない。error_code は既知の短いコードへ正規化（`toSafeErrorCode`）。
+- 失敗: DB 例外で Tx ごとロールバック → **サーバー（Server Action）が例外捕捉し、service_role で専用関数 `app_record_membership_accept_failure` を別 Tx 実行**（実装: `src/lib/auth/audit.ts`, 呼出: `pending-invitation/actions.ts`）。汎用の失敗監査 RPC は置かない（Phase 1 の失敗監査対象は membership.accept のみ）。
+- 専用関数の DB 側制約（SEC-71..75 で検証済み）: action='membership.accept'・resource_type='organization_membership'・success=false・metadata='{}' を固定（パラメータ自体が存在しない）／error_code は許可リスト7種のみ／actor・membership・correlation は必須／organization_id は membership から DB 側で解決（クライアント申告不可）。
+- metadata に PII 本文・財務情報・JWT・秘密情報を入れない。error_code はアプリ側でも同一許可リストへ正規化（`toSafeErrorCode`）。
 
 ## 6. SECURITY DEFINER 規律
 全 definer 関数: `set search_path = ''`・完全修飾参照・動的 SQL なし。

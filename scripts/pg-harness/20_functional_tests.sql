@@ -249,9 +249,10 @@ $$;
 do $$
 declare v_ok boolean := false;
 begin
-  -- U7 を revoke（2人 -> 1人）
+  -- U7 / U10 を revoke（3人 -> 1人）
   perform test.as_user('00000000-0000-4000-8000-000000000001');
   perform public.app_revoke_system_admin('00000000-0000-4000-8000-000000000007');
+  perform public.app_revoke_system_admin('00000000-0000-4000-8000-00000000000a');
   -- 最後の1人（自分）は revoke できない
   begin
     perform public.app_revoke_system_admin('00000000-0000-4000-8000-000000000001');
@@ -267,19 +268,22 @@ exception when sqlstate 'P0099' then null;
 end
 $$;
 
--- FUNC-15: 失敗監査は service_role が別Txで記録できる
+-- FUNC-15: 失敗監査（専用関数）は service_role が別Txで記録できる
 do $$
 begin
   perform test.as_service();
-  perform public.app_record_failure_audit(
-    'membership.invite', '00000000-0000-4000-8000-000000000003',
-    test.id('org_a'), 'organization_membership', null,
-    'not_authorized', '00000000-0000-4000-8000-00000000aaaa');
+  perform public.app_record_membership_accept_failure(
+    '00000000-0000-4000-8000-000000000005',
+    test.id('m_invitee'),
+    'not_authorized',
+    '00000000-0000-4000-8000-00000000aaaa');
   perform test.reset();
   if not exists (
     select 1 from public.authoritative_audit_logs
-     where action = 'membership.invite' and success = false
+     where action = 'membership.accept' and success = false
        and error_code = 'not_authorized'
+       and resource_type = 'organization_membership'
+       and organization_id = test.id('org_a')
        and correlation_id = '00000000-0000-4000-8000-00000000aaaa'
   ) then
     raise exception 'TEST FAIL: FUNC-15 failure audit row missing';

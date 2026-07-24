@@ -192,14 +192,65 @@ begin
 end
 $$;
 
--- SEC-10: 同一法人 active メンバー同士はプロフィール参照可
+-- SEC-66/67: SALES_USER は同一法人の他人の profile 行（email / system_role 含む）を取得不可
+do $$
+declare v_rows int; v_emails int; v_roles int;
+begin
+  perform test.as_user('00000000-0000-4000-8000-000000000003'); -- sales A
+  select count(*) into v_rows from public.user_profiles
+   where id = '00000000-0000-4000-8000-000000000002'; -- admin A
+  if v_rows <> 0 then
+    raise exception 'TEST FAIL: SEC-66 sales user sees co-member profile row';
+  end if;
+  select count(*) into v_emails from public.user_profiles
+   where id <> '00000000-0000-4000-8000-000000000003' and email is not null;
+  if v_emails <> 0 then
+    raise exception 'TEST FAIL: SEC-66 sales user can read % other emails', v_emails;
+  end if;
+  select count(*) into v_roles from public.user_profiles
+   where id <> '00000000-0000-4000-8000-000000000003' and system_role is not null;
+  if v_roles <> 0 then
+    raise exception 'TEST FAIL: SEC-67 sales user can read other system_role';
+  end if;
+end
+$$;
+
+-- SEC-68: ORGANIZATION_ADMIN は自法人ユーザーの profile を SELECT 可
+do $$
+declare v_n int;
+begin
+  perform test.as_user('00000000-0000-4000-8000-000000000002'); -- admin A
+  select count(*) into v_n from public.user_profiles
+   where id = '00000000-0000-4000-8000-000000000003'; -- sales A
+  if v_n <> 1 then
+    raise exception 'TEST FAIL: SEC-68 org admin cannot see own-org member profile';
+  end if;
+end
+$$;
+
+-- SEC-69: ORGANIZATION_ADMIN は他法人ユーザーの profile を取得不可
+do $$
+declare v_n int;
+begin
+  perform test.as_user('00000000-0000-4000-8000-000000000002'); -- admin A
+  select count(*) into v_n from public.user_profiles
+   where id = '00000000-0000-4000-8000-000000000004'; -- admin B (org B)
+  if v_n <> 0 then
+    raise exception 'TEST FAIL: SEC-69 org admin sees other-org profile';
+  end if;
+end
+$$;
+
+-- SEC-70: 本人は自分の profile を SELECT 可
 do $$
 declare v_n int;
 begin
   perform test.as_user('00000000-0000-4000-8000-000000000003'); -- sales A
   select count(*) into v_n from public.user_profiles
-   where id = '00000000-0000-4000-8000-000000000002'; -- admin A
-  if v_n <> 1 then raise exception 'TEST FAIL: SEC-10 same-org profile not visible'; end if;
+   where id = '00000000-0000-4000-8000-000000000003';
+  if v_n <> 1 then
+    raise exception 'TEST FAIL: SEC-70 own profile not visible';
+  end if;
 end
 $$;
 
@@ -284,7 +335,9 @@ declare v_ok int := 0;
 begin
   perform test.as_user('00000000-0000-4000-8000-000000000001'); -- SYSTEM_ADMIN でも不可
   begin
-    perform public.app_record_failure_audit('x', null, null, null, null, 'e', null);
+    perform public.app_record_membership_accept_failure(
+      '00000000-0000-4000-8000-000000000001', test.id('m_invitee'),
+      'not_authorized', '00000000-0000-4000-8000-00000000bbbb');
   exception when insufficient_privilege then v_ok := v_ok + 1;
   end;
   begin
@@ -343,6 +396,130 @@ begin
   if (select status from public.organization_memberships where id = test.id('m_a1'))
      is distinct from 'active'::public.membership_status then
     raise exception 'TEST FAIL: SEC-16 target row was modified by failed op';
+  end if;
+end
+$$;
+
+-- SEC-71: 許可リスト外の error_code は拒否される（service_role でも）
+do $$
+declare v_ok int := 0;
+begin
+  perform test.as_service();
+  begin
+    perform public.app_record_membership_accept_failure(
+      '00000000-0000-4000-8000-000000000005', test.id('m_invitee'),
+      'DROP TABLE user_profiles', '00000000-0000-4000-8000-00000000cccc');
+  exception when invalid_parameter_value then v_ok := v_ok + 1;
+  end;
+  begin
+    perform public.app_record_membership_accept_failure(
+      '00000000-0000-4000-8000-000000000005', test.id('m_invitee'),
+      null, '00000000-0000-4000-8000-00000000cccc');
+  exception when invalid_parameter_value then v_ok := v_ok + 1;
+  end;
+  begin
+    perform public.app_record_membership_accept_failure(
+      null, test.id('m_invitee'),
+      'not_authorized', '00000000-0000-4000-8000-00000000cccc');
+  exception when invalid_parameter_value then v_ok := v_ok + 1;
+  end;
+  if v_ok <> 3 then
+    raise exception 'TEST FAIL: SEC-71 invalid failure-audit inputs, blocked %/3', v_ok;
+  end if;
+end
+$$;
+
+-- SEC-72: action / resource_type は呼出し側から指定不能（パラメータが存在しない）
+do $$
+declare v_ok boolean := false;
+begin
+  perform test.as_service();
+  begin
+    execute $q$select public.app_record_membership_accept_failure(
+      'forged.action'::text,
+      '00000000-0000-4000-8000-000000000005'::uuid,
+      'org'::text, 'x'::text, 'not_authorized'::text,
+      '00000000-0000-4000-8000-00000000cccc'::uuid)$q$;
+  exception when undefined_function then v_ok := true;
+  end;
+  if not v_ok then
+    raise exception 'TEST FAIL: SEC-72 action-accepting signature exists';
+  end if;
+end
+$$;
+
+-- SEC-73: metadata を受け付けるシグネチャが存在しない
+do $$
+declare v_ok boolean := false;
+begin
+  perform test.as_service();
+  begin
+    execute $q$select public.app_record_membership_accept_failure(
+      '00000000-0000-4000-8000-000000000005'::uuid,
+      '00000000-0000-4000-8000-000000000005'::uuid,
+      'not_authorized'::text,
+      '00000000-0000-4000-8000-00000000cccc'::uuid,
+      '{"pii":"x"}'::jsonb)$q$;
+  exception when undefined_function then v_ok := true;
+  end;
+  if not v_ok then
+    raise exception 'TEST FAIL: SEC-73 metadata-accepting signature exists';
+  end if;
+end
+$$;
+
+-- SEC-74: 許可された membership.accept 失敗監査は成功し、固定値・org解決が正しい
+do $$
+declare v_row public.authoritative_audit_logs%rowtype;
+begin
+  perform test.as_service();
+  perform public.app_record_membership_accept_failure(
+    '00000000-0000-4000-8000-000000000005', test.id('m_invitee'),
+    'invite_email_mismatch', '00000000-0000-4000-8000-00000000dddd');
+  perform test.reset();
+  select * into v_row from public.authoritative_audit_logs
+   where correlation_id = '00000000-0000-4000-8000-00000000dddd';
+  if not found then
+    raise exception 'TEST FAIL: SEC-74 failure audit row missing';
+  end if;
+  if v_row.action <> 'membership.accept'
+     or v_row.resource_type <> 'organization_membership'
+     or v_row.success <> false
+     or v_row.metadata <> '{}'::jsonb
+     or v_row.organization_id is distinct from test.id('org_a') then
+    raise exception 'TEST FAIL: SEC-74 forced fields incorrect';
+  end if;
+end
+$$;
+
+-- SEC-75: success=true を作る失敗監査経路が存在しない
+--   (a) 旧汎用 app_record_failure_audit が存在しない
+--   (b) 専用関数に success パラメータが無く、生成行は常に success=false
+do $$
+declare v_n int;
+begin
+  select count(*) into v_n from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'app_record_failure_audit';
+  if v_n <> 0 then
+    raise exception 'TEST FAIL: SEC-75 generic failure-audit function still exists';
+  end if;
+  select count(*) into v_n from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public'
+     and p.proname = 'app_record_membership_accept_failure'
+     and p.pronargs = 4;
+  if v_n <> 1 then
+    raise exception 'TEST FAIL: SEC-75 dedicated function signature unexpected';
+  end if;
+  if exists (
+    select 1 from public.authoritative_audit_logs
+     where correlation_id in (
+       '00000000-0000-4000-8000-00000000aaaa',
+       '00000000-0000-4000-8000-00000000dddd')
+       and success = true
+  ) then
+    raise exception 'TEST FAIL: SEC-75 failure-audit produced success=true row';
   end if;
 end
 $$;

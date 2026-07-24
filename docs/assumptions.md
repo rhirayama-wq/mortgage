@@ -13,7 +13,7 @@
 - Node v22 / npm 10 / psql 16.13 / PostgreSQL 16.13 サーバ（ローカル起動）/ tsc 6.0.3 / eslint 10 / tsx 4.21 利用可。
 - **npm・PyPI・apt レジストリへのエグレスが遮断**（host_not_allowed）。`npm install` 不可
   → next/@supabase 等の node_modules を要する typecheck・lint・build は本環境で実行不能。
-  依存ゼロの純粋モジュール検証（tsc + node:test）と PostgreSQL ハーネスで代替し、
+  依存ゼロの純粋モジュール検証（tsc + `npm run test:offline` シム）と PostgreSQL ハーネスで代替し、
   残りは `npm run verify` を npm 取得可能環境で実行する。
 - **Docker は利用不可**（デーモン未起動）。**Supabase CLI 未導入**。
   → `supabase start` に依存する **PostgREST / GoTrue / Inbucket / Magic Link / 実JWT 検証は本環境では実行不可**。
@@ -86,6 +86,7 @@
 | U13 | unit test ランナー | **確定（レビュー指摘反映）: 正式ランナーは Vitest**（`npm run test`）。テストは `import {test} from "vitest"` + node:assert/strict で記述。レジストリ不通環境用に `npm run test:offline`（tsconfig paths で vitest→node:test シム解決）を併設。シムは node_modules 存在時には使用されない |
 | U15 | Magic Link 再送クールダウンの実効性 | Cookie ベース（httpOnly, 60秒, タイムスタンプのみ保存・メールアドレスは保存もログもしない）。**クライアント協調型でありサーバー側レート制限ではない**（Cookie 破棄で回避可能・複数インスタンス非共有）。実防御は GoTrue 側のメール送信レート制限に依存。サーバー側レート制限（正規化メールの HMAC キー等）は Post-MVP 課題 |
 | U16 | package-lock.json | 本サンドボックスはレジストリ不通のため**生成不能・未コミット**。最初に `npm install` 可能な環境で lockfile を生成しコミットすること。それまで CI の `npm ci` ジョブは失敗する（既知・意図的に隠さない） |
+| U17 | SALES_USER への同僚表示名の開示 | 2026-07-24 レビューで user_profiles の同一法人相互可視を撤回（SALES_USER に email 等を露出するため）。現行: 本人＋ORGANIZATION_ADMIN＋SYSTEM_ADMIN のみ。案件担当者名表示等で SALES_USER に表示名が必要になった場合は、user_id と display_name のみを返す専用ビュー/関数を追加する（user_profiles 全体は開けない） |
 | U14 | shadcn/ui の導入時期 | Phase 1 画面は素の Tailwind（CLI がレジストリ遮断で実行不可、かつ §5「不要な依存追加禁止」）。Phase 2 フォーム群から導入 |
 
 ## 3.1 CLAUDE.md 内の既知の不整合（CLAUDE.md §1 に基づく記録）
@@ -99,3 +100,10 @@
   環境制約（Docker不可 → 実Supabase検証は別環境）を記録。feature-map.md を新規作成。
 - 2026-07-24: ユーザー指定の CLAUDE.md（38章構成）を作成。§36 の「現在地」記述と実状態の乖離を D1、
   §38 停止点の実Supabase項目の環境制約を D2 として記録。
+- 2026-07-24 (レビュー対応 r2): ①法人管理3関数（create/rename/archive）に SYSTEM_ADMIN 集合
+  グローバルロックを追加しロック後認可へ統一（SEC-62..65 追加・PASS）。②user_profiles の
+  同一法人相互可視ポリシーを撤回し ORGANIZATION_ADMIN 限定へ（app_can_administer_profile、
+  SEC-66..70 追加・PASS、U17）。③汎用失敗監査 RPC を廃止し専用関数
+  app_record_membership_accept_failure へ（DB側で action/resource/success/metadata 固定・
+  error_code 許可リスト、SEC-71..75 追加・PASS）。④テストランナー表記を Vitest 正式へ統一（U13）。
+  migration 0001 は未適用・未共有のため直接修正（CLAUDE.md §33 の条件確認済み）。
