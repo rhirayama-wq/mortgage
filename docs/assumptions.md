@@ -83,7 +83,9 @@
 | U10 | 同一法人からの left 後の再招待 | unique(org,user) + left 終端のため MVP では不可。要件が出たら遷移設計を再検討 |
 | U11 | Zod の導入時期 | CLAUDE.md §7 は「Zodまたは明示的実行時検証」を許容。Phase 1 は依存ゼロの明示検証（validators.ts）で実装（レジストリ遮断下でも実テスト可能なため）。Phase 2 のフォーム実装時に Zod + RHF を導入 |
 | U12 | ORGANIZATION_ADMIN の監査ログ閲覧範囲 | 暫定: 自法人分のみ閲覧可（RLS で制限）。要プロダクト確認 |
-| U13 | unit test ランナー | 暫定: node:test + tsx（依存ゼロで本環境実行可能）。Vitest への移行は npm 取得可能環境で判断。テスト資産は API 互換に近い形で記述済み |
+| U13 | unit test ランナー | **確定（レビュー指摘反映）: 正式ランナーは Vitest**（`npm run test`）。テストは `import {test} from "vitest"` + node:assert/strict で記述。レジストリ不通環境用に `npm run test:offline`（tsconfig paths で vitest→node:test シム解決）を併設。シムは node_modules 存在時には使用されない |
+| U15 | Magic Link 再送クールダウンの実効性 | Cookie ベース（httpOnly, 60秒, タイムスタンプのみ保存・メールアドレスは保存もログもしない）。**クライアント協調型でありサーバー側レート制限ではない**（Cookie 破棄で回避可能・複数インスタンス非共有）。実防御は GoTrue 側のメール送信レート制限に依存。サーバー側レート制限（正規化メールの HMAC キー等）は Post-MVP 課題 |
+| U16 | package-lock.json | 本サンドボックスはレジストリ不通のため**生成不能・未コミット**。最初に `npm install` 可能な環境で lockfile を生成しコミットすること。それまで CI の `npm ci` ジョブは失敗する（既知・意図的に隠さない） |
 | U14 | shadcn/ui の導入時期 | Phase 1 画面は素の Tailwind（CLI がレジストリ遮断で実行不可、かつ §5「不要な依存追加禁止」）。Phase 2 フォーム群から導入 |
 
 ## 3.1 CLAUDE.md 内の既知の不整合（CLAUDE.md §1 に基づく記録）

@@ -9,9 +9,11 @@
     "typecheck": "tsc --noEmit",
     "typecheck:pure": "tsc -p tsconfig.pure.json --noEmit",
     "lint": "eslint .",
-    "test": "node --import tsx --test src/lib/units/bps.test.ts src/lib/auth/safe-next.test.ts src/lib/auth/otp.test.ts src/lib/auth/validators.test.ts src/lib/auth/access.test.ts",
+    "test": "vitest run",
     "e2e": "playwright test",
-    "verify": "npm run typecheck && npm run lint && npm run test && npm run build"
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "test:offline": "TSX_TSCONFIG_PATH=tsconfig.offline-test.json tsx --test src/lib/units/bps.test.ts src/lib/auth/safe-next.test.ts src/lib/auth/otp.test.ts src/lib/auth/validators.test.ts src/lib/auth/access.test.ts",
+    "test:db": "bash ../scripts/pg-harness/run.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",
@@ -32,6 +34,7 @@
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.0"
   }
 }

@@ -12,7 +12,7 @@
 - 実行コマンド: `PGHOST=/tmp PGPORT=5433 PGUSER=postgres bash scripts/pg-harness/run.sh`
 
 ### 1.2 アプリ純粋ロジック
-- unit test 41/41 PASS（node:test + tsx v4.21 / Node v22.22）。
+- unit test 41/41 PASS（`npm run test:offline` 相当: tsx v4.21 / Node v22.22。正式ランナー Vitest での再実行は npm ci 後に CI で実施）。
 - 純粋モジュールの strict typecheck PASS（tsc 6.0.3, `tsconfig.pure.json`）。
 
 ## 2. 未検証（PENDING）と理由

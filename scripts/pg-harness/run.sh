@@ -14,7 +14,14 @@ export PGHOST="${PGHOST:-/tmp}"
 export PGPORT="${PGPORT:-5433}"
 export PGUSER="${PGUSER:-postgres}"
 DB=mortgage_harness
-PSQL="psql -X -q -v ON_ERROR_STOP=1"
+# HARNESS_VERBOSE=1 で各テストヘッダ・文をエコー（証跡用）
+if [ "${HARNESS_VERBOSE:-0}" = "1" ]; then
+  PSQL="psql -X -a -v ON_ERROR_STOP=1"
+else
+  PSQL="psql -X -q -v ON_ERROR_STOP=1"
+fi
+# 値取得は常に quiet（verbose モードのエコー混入防止）
+PSQL_Q="psql -X -q -v ON_ERROR_STOP=1"
 
 echo "== recreate database $DB =="
 dropdb --if-exists "$DB"
@@ -55,7 +62,7 @@ if [ "$S2_RC" -eq 0 ]; then
 fi
 grep -q 'last_organization_admin_protected' /tmp/conc1_s2.out || {
   echo "TEST FAIL: CONC-01 unexpected error:"; cat /tmp/conc1_s2.out; exit 1; }
-REMAIN=$($PSQL -d "$DB" -t -A -c \
+REMAIN=$($PSQL_Q -d "$DB" -t -A -c \
   "select count(*) from public.organization_memberships m
     join test.ids t on t.key='org_c' and t.id=m.organization_id
    where m.status='active' and m.role='ORGANIZATION_ADMIN'")
@@ -76,7 +83,7 @@ if [ "$S2_RC" -eq 0 ]; then
 fi
 grep -Eq 'not_authorized|last_system_admin_protected' /tmp/conc2_s2.out || {
   echo "TEST FAIL: CONC-02 unexpected error:"; cat /tmp/conc2_s2.out; exit 1; }
-SYSADMINS=$($PSQL -d "$DB" -t -A -c \
+SYSADMINS=$($PSQL_Q -d "$DB" -t -A -c \
   "select count(*) from public.user_profiles where system_role='SYSTEM_ADMIN'")
 [ "$SYSADMINS" = "1" ] || { echo "TEST FAIL: CONC-02 remaining sysadmins=$SYSADMINS"; exit 1; }
 echo "CONC-02 PASSED"

@@ -19,6 +19,8 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: app/package-lock.json
+      # NOTE: package-lock.json は初回 `npm install` 可能な環境で生成・コミットする
+      # （assumptions.md U16）。lockfile が無い間、このステップは失敗する（既知）。
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint

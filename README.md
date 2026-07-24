@@ -31,7 +31,9 @@ cd app
 npm install                 # 要ネットワーク
 cp .env.example .env.local  # supabase start の値を設定
 npm run verify              # typecheck + lint + unit + build
-npm run test                # unit（依存ゼロ、node:test + tsx）
+npm run test                # unit（正式: Vitest）
+npm run test:offline        # npm不通環境用フォールバック（同一テストを node:test で実行）
+npm run test:db             # PostgreSQL ハーネス（要ローカルPG）
 npm run typecheck:pure      # 純粋モジュールのみの strict typecheck
 ```
 

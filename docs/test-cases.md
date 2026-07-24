@@ -6,13 +6,18 @@
 > 本書の ID が再構築後の正。旧 SEC-61..64（ロック後再認可）は CONC-01/02 と
 > security.md §4 の実装規約に対応する。
 
-## 1. UNIT（実行環境: node:test + tsx。本環境で実行済み）
+## 1. UNIT
+正式ランナー: **Vitest**（`npm run test` = `vitest run`。テストは `import { test } from "vitest"` ＋
+`node:assert/strict`）。npm レジストリ不通環境向けフォールバック: `npm run test:offline`
+（tsconfig.offline-test.json の paths で "vitest" をシムへ解決し node:test で実行。
+アサーションが node:assert のため両ランナーで同一挙動）。
+本環境では `test:offline` で 41/41 実行済み。Vitest 本体での実行は `npm ci` 後に CI で行う。
 | ID | 内容 | 状態 |
 |---|---|---|
 | UNIT-BPS-01..07 | bps 変換・整数保持・丸め・表示・ラウンドトリップ | APP_PASS (41/41) |
 | RUNTIME-01..08 | uuid / enum / membership行 / profile行 の実行時検証（fail closed） | APP_PASS |
 | AUTH-02a..c | メール正規化・形式検証 | APP_PASS |
-| AUTH-04a..06d | open redirect 防止（絶対URL/протокол相対/バックスラッシュ/scheme/制御文字/資格情報/長さ） | APP_PASS |
+| AUTH-04a..06d | open redirect 防止（絶対URL/プロトコル相対/バックスラッシュ/scheme/制御文字/資格情報/長さ） | APP_PASS |
 | AUTH-07a..c | OTP type 許可リスト（email/magiclink のみ。recovery/invite/signup 拒否） | APP_PASS |
 | AUTH-12a..13c, 20a..b | access 判定（未所属/招待中/停止/終了/SYSTEM_ADMIN優先/複数法人の決定的選択） | APP_PASS |
 
@@ -79,6 +84,7 @@
 | typecheck (全体) | PENDING | npm レジストリ遮断により node_modules 未取得。`npm run typecheck` で実行 |
 | typecheck (純粋モジュール, strict) | APP_PASS | `npm run typecheck:pure` 相当を tsc 6.0.3 で実行済み |
 | lint | PENDING | eslint-config-next 未取得 |
-| unit test | APP_PASS | 41/41（node:test + tsx、本環境で実行） |
+| unit test (offline fallback) | APP_PASS | 41/41（`npm run test:offline`、本環境で実行） |
+| unit test (Vitest 正式) | PENDING | `npm ci` 後に `npm run test`（同一ファイル・同一アサーション） |
 | production build | PENDING | next 未取得 |
 | E2E | DEFINED | e2e/auth.spec.ts（実Supabase 環境で実行） |

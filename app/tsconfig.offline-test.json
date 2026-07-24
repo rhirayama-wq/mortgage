@@ -1,0 +1,10 @@
+{
+  "//": "npm レジストリ不通環境でのテスト実行専用（tsx が paths を解決）。正式ランナーは Vitest。TSX_TSCONFIG_PATH でこのファイルを指定した場合のみ 'vitest' がシムへ解決される。",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "vitest": ["./src/test-shims/vitest-offline-shim.ts"]
+    }
+  }
+}
