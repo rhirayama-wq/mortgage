@@ -7,9 +7,19 @@
 ## 0. 前提ツール
 - Node.js 22 系以上（CI は Node 22 に固定。engines: `node >=22.9.0`）
 - **npm 11 系必須**（package-lock.json は npm **11.12.1** で生成・CI も同版に固定・
-  package.json の `packageManager` と一致）。npm 10 の `npm ci` は、npm 11 が lockfile へ
-  書き込む version 欠落の optional スタブ（unrs-resolver の未対応プラットフォーム向け
-  バインディング）により **"Invalid Version:" で失敗する**ため使用しない。
+  package.json の `packageManager` と一致）。
+- 既知の lockfile 不具合（**2026-07-25 修正済み**）: npm 11.12.1 は
+  `node_modules/unrs-resolver/node_modules/@unrs/resolver-binding-openharmony-arm64` を
+  `version` / `resolved` / `integrity` を欠いた optional スタブとして書き出すことがある。
+  この lockfile に対する `npm ci` は **npm のバージョンに関係なく**
+  `npm error Invalid Version:` で失敗する（npm が `undefined` を semver として解決しようとし、
+  空レンジで `SemVer('')` が throw するため。エラー末尾が空なのがこの経路の指紋）。
+  Mac で成功していたのは warm な npm キャッシュが当該解決を回避していたためで、
+  クリーン環境（CI・cold cache）でのみ再現する。
+  当該エントリを健全な兄弟エントリと同一の形（version / resolved / integrity / cpu / dev /
+  license / optional / os）へ補完して解消済み。**lockfile を再生成した場合は同じスタブが
+  再発していないか確認すること**（`node -e "const l=require('./package-lock.json');
+  console.log(Object.entries(l.packages).filter(([k,v])=>k&&v.link!==true&&typeof v.version!=='string'))"`）。
 - Docker Desktop（起動済み）
 - Supabase CLI（`brew install supabase/tap/supabase`）
 
