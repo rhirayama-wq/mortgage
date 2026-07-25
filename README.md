@@ -70,8 +70,7 @@ cd app && npm run verify:supabase && npm run e2e:local
 ```
 
 ## 将来課題（Phase 1 完了を妨げないバックログ）
-既知残課題 4 分類（docs/phase1-validation.md §2）に加え、npm audit の high severity 12 件と
-GitHub Actions の `actions/checkout@v4` / `setup-node@v4` の Node 20 deprecation 警告を別枠で管理する。
+既知残課題 4 分類（docs/phase1-validation.md §2）に加え、npm audit の high severity 12 件を別枠で管理する。
 
 ## 禁止事項（抜粋・詳細は CLAUDE.md §32）
 本番 Supabase への接続 / 本番 Magic Link 送信 / 実顧客データ・実在金融機関の
