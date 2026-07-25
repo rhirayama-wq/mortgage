@@ -39,7 +39,9 @@ site_url = "http://localhost:3000"
 additional_redirect_urls = ["http://localhost:3000/auth/callback"]
 
 [auth.email]
-enable_signup = false          # shouldCreateUser:false と整合（自動サインアップ禁止）
+enable_signup = true           # 注意: false は email プロバイダ全体の無効化（GOTRUE_EXTERNAL_EMAIL_ENABLED）で、
+                               # 既存ユーザーへの Magic Link 送信も 422 email_provider_disabled になる（2026-07-25 実測）。
+                               # 自動サインアップ禁止は [auth] enable_signup=false + shouldCreateUser:false で担保する。
 enable_confirmations = false
 
 # SSR token_hash フロー用テンプレート（AUTH-07: callback は token_hash + type のみ受理）
