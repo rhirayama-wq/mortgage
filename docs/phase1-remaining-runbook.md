@@ -5,7 +5,11 @@
 **本番 Supabase へは接続しない。ローカルスタックのみ使用する。**
 
 ## 0. 前提ツール
-- Node.js 22 系 / npm
+- Node.js 22 系以上（CI は Node 22 に固定。engines: `node >=22.9.0`）
+- **npm 11 系必須**（package-lock.json は npm **11.12.1** で生成・CI も同版に固定・
+  package.json の `packageManager` と一致）。npm 10 の `npm ci` は、npm 11 が lockfile へ
+  書き込む version 欠落の optional スタブ（unrs-resolver の未対応プラットフォーム向け
+  バインディング）により **"Invalid Version:" で失敗する**ため使用しない。
 - Docker Desktop（起動済み）
 - Supabase CLI（`brew install supabase/tap/supabase`）
 

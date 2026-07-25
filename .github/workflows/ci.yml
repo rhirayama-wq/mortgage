@@ -19,8 +19,16 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: app/package-lock.json
-      # NOTE: package-lock.json は初回 `npm install` 可能な環境で生成・コミットする
-      # （assumptions.md U16）。lockfile が無い間、このステップは失敗する（既知）。
+      # package-lock.json は npm 11.12.1 で生成（lockfileVersion 3）。
+      # Node 22 同梱の npm 10 は、npm 11 が lockfile へ書き込む「version 欠落の optional
+      # スタブ」（unrs-resolver の未対応プラットフォーム向けバインディング
+      # @unrs/resolver-binding-openharmony-arm64）を解釈できず `npm ci` が
+      # "Invalid Version:" で失敗する。lockfile 生成元と同一の npm 11.12.1 へ固定する
+      # （app/package.json の packageManager と必ず一致させること）。
+      - name: Pin npm to lockfile-generating version
+        run: npm install -g npm@11.12.1
+      - name: Show toolchain versions
+        run: node --version && npm --version
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
