@@ -12,7 +12,17 @@ import {
 } from "@/lib/supabase/middleware";
 import { getSafeInternalPath } from "@/lib/auth/safe-next";
 
-const PUBLIC_PATHS = new Set<string>(["/login", "/auth/callback", "/error"]);
+// /auth/signout は「未認証リダイレクトの対象にしない」パスに含める。
+// これを含めないと、未認証の GET/POST /auth/signout が middleware に捕捉され
+// route handler へ到達する前に 307 で /login へ飛んでしまう（GET=405 / POST=303 の
+// 契約を handler が返せない）。updateSession による Cookie refresh は引き続き実行され、
+// 通常の保護ルート判定（他パス）には影響しない。
+const PUBLIC_PATHS = new Set<string>([
+  "/login",
+  "/auth/callback",
+  "/auth/signout",
+  "/error",
+]);
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.has(pathname);

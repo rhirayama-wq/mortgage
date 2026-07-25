@@ -50,8 +50,13 @@ export async function sendMagicLink(formData: FormData): Promise<void> {
 
   if (error) {
     // 未登録メール等のエラーでも応答を変えない（アカウント列挙防止）。
-    // 内部詳細はログにも出さない（メールアドレスは PII のためログ禁止）。
-    console.error("[login] magic link send failed (details suppressed)");
+    // ログには安全な識別子のみ（HTTP status / エラー code）。
+    // メールアドレス・本文・token・メッセージ全文は出さない（PII / 内部詳細のため）。
+    const status = (error as { status?: number }).status ?? "unknown";
+    const code = (error as { code?: string }).code ?? "unknown";
+    console.error(
+      `[login] magic link send failed status=${status} code=${code}`,
+    );
   }
 
   cookieStore.set(COOLDOWN_COOKIE, String(Date.now() + COOLDOWN_MS), {

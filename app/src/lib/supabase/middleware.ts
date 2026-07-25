@@ -22,7 +22,9 @@ export interface SessionResult {
   user: User | null;
 }
 
-export async function updateSession(request: NextRequest): Promise<SessionResult> {
+export async function updateSession(
+  request: NextRequest,
+): Promise<SessionResult> {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(supabaseUrl(), supabaseAnonKey(), {
@@ -36,7 +38,13 @@ export async function updateSession(request: NextRequest): Promise<SessionResult
         }
         supabaseResponse = NextResponse.next({ request });
         for (const { name, value, options } of cookiesToSet) {
-          supabaseResponse.cookies.set(name, value, options);
+          // @supabase/ssr は httpOnly=false で書く（ブラウザ側クライアントが読む前提）が、
+          // 本アプリはクライアント側 Supabase を使用しないため httpOnly を強制する
+          // （CLAUDE.md §17/§18/§23。assumptions.md U22: クライアント側利用を始める場合は再検討）。
+          supabaseResponse.cookies.set(name, value, {
+            ...options,
+            httpOnly: true,
+          });
         }
       },
     },

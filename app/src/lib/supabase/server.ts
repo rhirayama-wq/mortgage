@@ -24,7 +24,10 @@ export async function createSupabaseServerClient() {
       setAll(cookiesToSet: CookieToSet[]) {
         try {
           for (const { name, value, options } of cookiesToSet) {
-            cookieStore.set(name, value, options);
+            // @supabase/ssr は httpOnly=false で書く（ブラウザ側クライアントが読む前提）が、
+            // 本アプリはクライアント側 Supabase を使用しないため httpOnly を強制する
+            // （CLAUDE.md §17/§18/§23。assumptions.md U22: クライアント側利用を始める場合は再検討）。
+            cookieStore.set(name, value, { ...options, httpOnly: true });
           }
         } catch {
           // Server Component からの呼出しでは Cookie を書けない。
