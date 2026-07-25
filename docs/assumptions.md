@@ -92,6 +92,7 @@
 | U21 | 監査テーブルへの将来 unique 制約追加時の注意 | 専用失敗監査関数は ON CONFLICT DO NOTHING（無指定ターゲット）のため、将来 authoritative_audit_logs へ別の unique 制約/インデックスを追加すると、意図しない衝突まで無視される。追加時は ON CONFLICT のターゲットを (correlation_id, action, success) 明示指定へ見直すこと（technical debt・非ブロッキング） |
 | U17 | SALES_USER への同僚表示名の開示 | 2026-07-24 レビューで user_profiles の同一法人相互可視を撤回（SALES_USER に email 等を露出するため）。現行: 本人＋ORGANIZATION_ADMIN＋SYSTEM_ADMIN のみ。案件担当者名表示等で SALES_USER に表示名が必要になった場合は、user_id と display_name のみを返す専用ビュー/関数を追加する（user_profiles 全体は開けない） |
 | U14 | shadcn/ui の導入時期 | Phase 1 画面は素の Tailwind（CLI がレジストリ遮断で実行不可、かつ §5「不要な依存追加禁止」）。Phase 2 フォーム群から導入 |
+| U22 | 認証 Cookie の httpOnly 強制 | **確定（2026-07-25 ユーザー承認）**: @supabase/ssr は仕様として httpOnly=false で Cookie を書く（ブラウザ側クライアントがセッションを読む前提）が、本アプリはクライアント側 Supabase を未使用（browser.ts は定義のみ・参照ゼロ、認証はサーバー集約）のため、server.ts / middleware.ts の setAll で `{ ...options, httpOnly: true }` を強制する（E2E B11 で実機検証）。**将来クライアント側 Supabase（Realtime・クライアント直クエリ等）を導入する場合はこの方針の再検討が必須**（httpOnly を外すか、クライアントが Cookie を読まない構成を選ぶ） |
 
 ## 3.1 CLAUDE.md 内の既知の不整合（CLAUDE.md §1 に基づく記録）
 | # | 箇所 | 問題 | 扱い |
@@ -116,3 +117,8 @@
   （SEC-76..82 追加・PASS、U18）。②失敗監査に actor=membership本人 の DB 側整合検証と、
   correlation unique partial index (correlation_id, action, success) + on conflict do nothing
   による冪等性を追加（SEC-83..87 追加・PASS）。migration 0001 直接修正（同上条件）。
+- 2026-07-25: Phase 1-B 実機検証中の確定事項: ①local seed を GoTrue 正規 fixture へ修正（raw INSERT の
+  不完全行が Admin API から不可視だったため）。②config.toml `[auth.email] enable_signup` は
+  GOTRUE_EXTERNAL_EMAIL_ENABLED に対応し false は email プロバイダ全体の無効化（422）と判明 → true へ
+  （自動サインアップ禁止は [auth] enable_signup=false + shouldCreateUser:false で維持）。
+  ③認証 Cookie の httpOnly=true 強制を決定（U22）。

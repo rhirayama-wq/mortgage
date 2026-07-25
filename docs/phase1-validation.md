@@ -1,14 +1,31 @@
 # phase1-validation.md — Phase 1 検証実績（再構築版）
 
-実施日: 2026-07-24 / 環境: クラウドサンドボックス（Docker 不可・npm レジストリ遮断）
+実施日: 2026-07-24〜25 / 環境: クラウドサンドボックス（静的検証）＋ **Mac 実機（正式 verify・実 Supabase・E2E）**
 
 > **レビュー承認（2026-07-24）**: Phase 1A DB 層は
 > 「PostgreSQL ハーネス上の静的・RLS・GRANT・状態遷移・監査・並行実行レビュー完了」として承認済み
 > （migration の SHA-256 一致・終了コード0・SEC-62..87 を含む全テスト PASS をレビュアーが実ファイルで確認）。
-> **これは Phase 1 全体の完了ではない。** 正式 npm verify / lockfile / CI / 実 Supabase local /
-> PostgREST / GoTrue / Inbucket / Magic Link 実環境 / Cookie 実機 / E2E は PENDING、Phase 1 は継続中、
-> Phase 2 未着手。残作業の手順は docs/phase1-remaining-runbook.md。
-> 非ブロッキングの将来課題は assumptions.md U18..U21 に記録。
+> **これは Phase 1 全体の完了ではない。** 現時点の実績:
+> **正式 `npm run verify`（typecheck/lint/Vitest 41/41/build 全10ルート）は、本セッション追加ファイル
+> （scripts/verify-supabase.ts・e2e 拡張・signout middleware 修正）を含む最新コードで Mac PASS（2026-07-25）。**
+> package-lock.json は 8add410 で完了。`next-env.d.ts`（自動生成）の triple-slash-reference lint は**内容変更せず**
+> eslint.config.mjs の global ignore で対応。Supabase local `start` / migration 適用 / seed 適用 / `db reset` /
+> Next.js `/login` 200 / Studio 307 / Mailpit 200 の **スモークは Mac で PASS**（§1.3）。
+> **実 Supabase 検証・完了（2026-07-25, Mac）**:
+> **`npm run verify:supabase` 28/28 全 PASS**（B1..B5 / B9 / B13-DB / B15: 実 PostgREST 経由の RLS・列 GRANT・
+> 実 JWT 3 ロール・業務 RPC 認可/監査・招待メール一致・失敗監査別 Tx・直接書込拒否）。
+> **`npm run e2e:local` 7/7 全 PASS**（B6..B8 / B10(session) / B11(部分検証) / B12 / B14 / B16:
+> Magic Link 送信→Mailpit 受信→単回使用→再利用拒否→Cookie 属性（httpOnly=true 強制, U22）→
+> セッション維持→認証済み signout の全ライフサイクル）。
+> **`npm run verify`（typecheck/lint/Vitest 41/41/build）最新コードで PASS**。
+> **結論: Phase 1 の機能実装と主要実機検証は完了。** 既知の残課題（テスト PENDING）は次の 4 分類:
+> ① **B10-refresh**（middleware token refresh の強制検証・未実装）
+> ② **B13-HTTP**（Next.js 実 HTTP 失敗監査 E2E・未実装）
+> ③ **AUTH-11 実機**（/error 振り分けの実機確認）
+> ④ **AUTH-12..16 の認証済みロール・状態別 E2E**（ロール別認可 / 他法人 ID 拒否 / invited・suspended・left 状態別。
+>   ※ 未認証の保護ルート拒否は E2E 実機 PASS 済み）。いずれも PASS 扱いにしない。
+> これとは別に **CI リモート実走行はコミット・push 後の実行待ち**。**Phase 2 は未着手。**
+> 非ブロッキングの将来課題は assumptions.md U18..U22 に記録。
 
 ## 1. 実行済み検証
 
@@ -28,24 +45,141 @@
 - 実行コマンド: `PGHOST=/tmp PGPORT=5433 PGUSER=postgres bash scripts/pg-harness/run.sh`
 
 ### 1.2 アプリ純粋ロジック
-- unit test 41/41 PASS（`npm run test:offline` 相当: tsx v4.21 / Node v22.22。正式ランナー Vitest での再実行は npm ci 後に CI で実施）。
-- 純粋モジュールの strict typecheck PASS（tsc 6.0.3, `tsconfig.pure.json`）。
+- unit test 41/41 PASS（`npm run test:offline`。**正式ランナー Vitest でも Mac で 41/41 PASS 済み**）。
+- 純粋モジュールの strict typecheck PASS（tsc, `tsconfig.pure.json`）。
 
-## 2. 未検証（PENDING）と理由
+### 1.3 Mac ローカルで確認済みの前提（スモーク・PASS）
+2026-07-24 に Mac (~/mortgage, HEAD 70d605b) で確認済み（本セッションの新規テストとは別）:
+Supabase local `supabase start` PASS / migration 適用 PASS / seed 適用 PASS / `supabase db reset` PASS /
+Next.js `/login` 200 / Supabase Studio 307（`/project/default` へ）/ Mailpit (`127.0.0.1:54324`) 200。
+`.env.local` に必要 4 変数設定済み（gitignore 対象）。**これは前提スタックの起動確認であり、下記 B テストの実行結果ではない。**
 
-### 2.1 SUPABASE_PENDING（Docker 必須 — 本サンドボックスでは実行不可）
-supabase start / db reset、PostgREST 経由の RLS・列GRANT・RPC、実 JWT
-（anon/authenticated/service_role）、GoTrue Magic Link 発行・有効期限・
-**使用済みリンク再利用拒否**、Inbucket 受信、招待メール一致 E2E、
-middleware Cookie refresh の実機確認、失敗監査別 Tx の実機確認、AUTH-01..19 の E2E。
+### 1.4 B1..B16 検証の自動化（実装済み・Mac 実機で PASS。経緯は §内の実行履歴参照）
+2026-07-24 追加・レビュー反映。runbook §B の B1..B16 を自動・半自動化した（新機能追加なし・migration/RLS/GRANT 不変）。
+- `app/scripts/verify-supabase.ts`（`npm run verify:supabase`）: **B1..B5 / B9 / B13(DB) / B15** を
+  PostgREST + GoTrue admin API + service_role 経由で検証。ループバック URL 限定（本番接続拒否）、
+  JWT/キー/token_hash/Cookie/DB URL を出力しない、fixture は `@example.test` の架空データのみ。
+  - **B9（新規・実 Supabase 統合）**: 招待先ユーザー A・別メールユーザー B・A 向け membership・B の
+    authenticated session を作り、B が A の membership を accept しようとして拒否され、membership 状態が
+    `invited` のまま・不正な成功監査が残らないことを確認（`test.skip` に依存しない）。
+  - **SYSTEM_ADMIN セッション失敗の根本原因（Mac の DB 確認で確定）**: 旧 `seed.sql` は
+    `auth.users` への `(id, email)` のみの **raw INSERT** で、`aud=NULL / role=NULL / email 未確認 /
+    auth.identities 0 件** の不完全行になっていた。この行は GoTrue の Admin API から**不可視**
+    （`listUsers()` に出ず `updateUserById()` も開始不能）で、Magic Link / password いずれのセッションも発行できない。
+  - **修正（migration ではなく local seed の修正）**: `app/supabase/seed.sql` を GoTrue 正規 fixture へ変更。
+    UUID を維持し、`instance_id`（既定）/ `aud='authenticated'` / `role='authenticated'` / `email_confirmed_at` /
+    `raw_app_meta_data(provider=email)` / token 列（空文字）を設定し、`auth.identities` に email provider の
+    identity（`sub` / `email` / `email_verified=true`）を作成。**password は seed しない**（Magic Link 認証）。
+    冪等（`supabase db reset` の反復で成功）で、`system_role` の bootstrap は維持。migration/RLS/GRANT は不変。
+  - **実行履歴（Mac 2026-07-25）**:
+    1. seed 修正後、seeded user は Admin API から可視化（`listUsers()` に出る）。
+    2. `updateUserById(seeded, {password})` は **400 `validation_failed`**（`name=AuthApiError status=400 code=validation_failed`）。
+       GoTrue health 200・接続は正常。→ seeded は password をやめ Magic Link へ（下記）。この修正で seeded セッションは
+       成立し、検証は `[B1]` まで到達。
+    3. 続いて fixture ユーザー作成（`createUser({password})`）が失敗し `test-setup` で停止（当初は `name=Error` のみ表示）。
+       **根本原因: 一時 password が 78 文字で bcrypt の 72 バイト上限超過 → GoTrue が 400 `validation_failed`**。
+       → 一時 password を 41 文字（UUID1個 + 文字種）に短縮し 72 以下へ。あわせて fixture/セッション失敗時に安全な
+       cause を運ぶ `SafeError` を導入（message/token/password は非出力のまま、どの API がどの code で失敗したか判別可能に）。
+    4. **再実行で `npm run verify:supabase` が 28/28 全 PASS**（run=mrzjqtj7、FAIL=0 SKIP=0）。
+       B1..B5 / B9 / B13-DB / B15 を **SUPABASE_LOCAL_PASS** として記録（test-cases.md §7）。
+    5. `e2e:local` 初回試行: `npx playwright install chromium` が行末コメントを引数と誤解釈して失敗し
+       Chromium 未導入 → ブラウザ系（E2E-01/02/06）は browserType.launch エラーで未実行。
+       request 系は **E2E-03（GET /auth/signout=405）PASS・E2E-07（未認証 POST=303→/login）PASS**
+       — **middleware の signout 通過修正を実機確認**。E2E-04 は「status≥300 だが location 無し」で FAIL →
+       アサーションを 3xx 範囲要求＋実 status 表示へ**厳格化**。
+    6. Chromium 導入後の `e2e:local` 再実行（2026-07-25 08:06）: **5/7 PASS**（E2E-01 ログイン画面描画 /
+       E2E-02 未認証 /cases→/login / E2E-03 GET=405 / E2E-05(旧基準) / E2E-07 未認証 POST=303）。
+       **FAIL 2 件（未解決・調査中）**:
+       - **E2E-04: `/auth/callback?type=recovery` が 500** — 「失敗は常に 3xx で /login?e=link」の契約違反。
+         `npm run build` は成功しており dev サーバ固有の可能性（長時間稼働の stale 状態を含む）。
+         dev サーバ再起動後の再現有無とサーバ側スタックトレースで切り分ける。E2E-05 も同一経路のため
+         3xx 要求へ厳格化（旧基準では 500 でも見かけ PASS になり得た）。
+       - **E2E-06: Magic Link メールが Mailpit に 15 秒以内に未着** — 送信失敗（dev サーバに
+         `[login] magic link send failed` が出るはず）か件名不一致かをタイムアウトから判別できなかったため、
+         メール検索を宛先のみに変更し件名は B7 の assert で検証（不一致なら期待/実際の件名が明示される）。
+         タイムアウト時は宛先一致メール件数のみ表示（本文・token 非出力）。
+       （当時この時点では E2E は未解決 — 最終結果は履歴 10 参照）
+    7. stale dev サーバ（7/24 起動の PID が :3000 を占有）を kill し、Playwright 管理のクリーンな dev サーバで
+       再実行（2026-07-25 08:2x）: **6/7 PASS**。**E2E-04 は 80ms で 3xx PASS — 前項の 500 は stale dev サーバ起因と
+       確定（アプリのバグではない）**。E2E-05 も厳格化基準（3xx + /login fallback）で PASS。
+       残る FAIL は **E2E-06 のみ**: `messages for recipient: 0` ＋ `[WebServer] [login] magic link send failed`
+       → **GoTrue `/otp`（signInWithOtp）の送信自体が失敗**（Mailpit 未着はその結果）。admin `generateLink` は
+       成功するため、差分の「メール送信」step が失敗している。有力候補: メールレート制限
+       （config.toml `email_sent = 2`/時）または GoTrue→Mailpit SMTP 送信エラー。切り分けのため
+       login Server Action の失敗ログへ安全な識別子（HTTP status / エラー code のみ・PII なし）を追加。
+    8. スタック再起動後の再実行（08:3x）: 追加ログにより **`status=422 code=email_provider_disabled` と確定**。
+       **根本原因: config.toml の `[auth.email] enable_signup = false`**。このキーは
+       `GOTRUE_EXTERNAL_EMAIL_ENABLED` に対応し、false は「メール経由サインアップ禁止」ではなく
+       **email プロバイダ全体の無効化**＝既存ユーザーへの Magic Link 送信（/otp）も 422 で拒否される
+       （admin generateLink はプロバイダ判定を通らないため成功していた）。当初 runbook のサンプル設定に
+       由来する設定ミス。**修正: `[auth.email] enable_signup = true`**（local 設定の修正。migration/RLS/GRANT/seed
+       不変）。自動サインアップ禁止は `[auth] enable_signup = false`（グローバル）＋ アプリの
+       `shouldCreateUser:false` ＋ 招待制 membership で引き続き三重に担保。runbook のサンプルも同時修正。
+       反映には `supabase stop && supabase start` が必要（当時この時点では E2E-06 未解決 — 最終結果は履歴 10 参照）。
+    9. config 修正後の再実行（08:4x）: **メール経路が開通** — B6（送信→初回ログイン成立）と B7（件名・
+       テンプレ固定文言・token_hash&type=email 形状）の各アサーションを通過し、**B11 の Cookie 属性で停止**:
+       `sb-*-auth-token` が **httpOnly=false**。これは @supabase/ssr の設計仕様（ブラウザ側クライアントが
+       セッションを読む前提）でありバグではない。本アプリはクライアント側 Supabase 未使用のため、
+       **ユーザー承認のうえ httpOnly=true を強制**（server.ts / middleware.ts の setAll で
+       `{ ...options, httpOnly: true }`。assumptions.md U22 に記録。テスト側の期待は変更しない）。
+       （当時この時点では E2E-06 は再実行待ち・B8 / B10(session) / B12 認証済み経路は未到達 — 最終結果は履歴 10 参照）
+    10. httpOnly 強制後の最終ラン（08:4x）: **`npm run verify` 全 PASS** ＋ **`npm run e2e:local` 7/7 全 PASS**。
+        E2E-06 が B6→B7→ログイン成立→B11（httpOnly=true / path=/ / sameSite=Lax / redirect 後存在）→
+        B10 セッション維持→B8 再利用拒否→B12 認証済み signout（303・Cookie 消滅・/cases→/login）まで完走。
+        **B6..B8 / B10(session) / B11(部分) / B12 / B14 / B16 = SUPABASE_LOCAL_PASS 確定。**
+  - **セッション取得方式（本セッションの修正）**:
+    - **seeded SYSTEM_ADMIN は password を設定しない**。`generateLink({type:"magiclink"})` → `verifyOtp({type:"email"})`
+      （必要なら `type:"magiclink"` フォールバック）で**実 JWT セッション**を取得する。`updateUserById`/password 更新は使わない。
+      失敗時は安全な識別子のみ表示（generateLink / verifyOtp の name/status/code。message/token/password/URL/key は非出力）。
+    - **新規 fixture ユーザー（B1/B2/B4/B5/B9 用）** は `admin.createUser` で正規作成し、実行ごとの一時 password で
+      password sign-in。createUser 失敗かつ既存が見つかった場合のみ**同一 run の fixture に限定して**`updateUserById`。
+      seeded にはこの repair/update 経路を使わない。password は seed/repo/docs/env に保存せずログにも出さない・loopback 限定。
+  - **診断の改善**: 初期化を段階化（env-load / client-create / admin-list-users / seeded-magiclink / seeded-verify-otp /
+    test-setup）し、失敗時に stage と安全な cause（name/status/code/cause.name/cause.code）のみ表示。初回 Admin API
+    アクセスは起動待ちの短いリトライ付き（最大 10 回・~600ms・無限禁止）。
+  - 400 validation_failed 等の失敗は原因分析として上記実行履歴に記録（**最終的に修正を経て 28/28 PASS — 履歴 4 参照**）。
+- `app/e2e/auth.spec.ts` 拡張（`npm run e2e:local`）: **B6..B8 / B10(session) / B11 / B12 / B14 / B16**。
+  初回のみ `npx playwright install chromium`（現行 config は Chromium のみ）。
+  Magic Link 送信は suite 内 1 通のみ（rate limit 対策）。B7 は件名=`ログイン用リンク`・テンプレ固定文言・
+  callback 形状を検証。B11 は Cookie 属性の**部分検証**（httpOnly / path=`/` / sameSite=Lax / redirect 後の存在。
+  secure はローカル HTTP で false のため固定 assert しない）。
+  - **signout 307 の修正（本セッション）**: 未認証の GET/POST `/auth/signout` が middleware に捕捉され
+    307 で /login へ横取りされていた。`src/middleware.ts` の未認証 redirect 除外パスに `/auth/signout` を追加し
+    route handler へ到達させ、**認証状態に依らず GET=405 / POST=303→/login** を成立させる（Cookie refresh・
+    他の保護ルート判定は不変）。E2E で 未認証GET=405 / 未認証POST=303 / 認証済みPOST=303・auth-token Cookie 消滅・
+    以後 /cases→/login を確認。
+- **未検証を PASS 扱いしない**:
+  - **B10-refresh（middleware token refresh の強制）**: 期限切れ/間近トークンを強制する確実な手段が無いため
+    **PENDING**。E2E は「セッション維持のみ」に格下げ済み。
+  - **B13-HTTP（Next.js 実 HTTP 失敗監査経路）**: **PENDING**。verify-supabase が確認するのは DB/PostgREST の
+    別 Tx 経路（B13-DB）まで。Server Action / route handler を通す E2E は未実装。
+  - B11 は部分検証（secure と真の refresh は未）。
+- 本サンドボックスでの静的検証（本セッション実行済み）: `npm run typecheck:pure` PASS /
+  `npm run test:offline` 41/41 PASS / 新規・変更 TS の隔離 tsc（ambient stub, strict）PASS / prettier 整形済み。
+  さらに **Mac で正式 `npm run verify` が最新コードで PASS（§6）**。
+- **最終実行結果（Mac 2026-07-25）**: `npm run verify:supabase` **28/28 全 PASS**（B1..B5 / B9 / B13-DB / B15 =
+  SUPABASE_LOCAL_PASS）＋ `npm run e2e:local` **7/7 全 PASS**（B6..B8 / B10(session) / B11(部分) / B12 / B14 /
+  B16 = SUPABASE_LOCAL_PASS）。対応表は test-cases.md §7（B1..B16）。
 
-実施先候補: (a) ユーザーの Mac + Docker Desktop + Supabase CLI、(b) CI（DinD 構成 workflow を追加）。
-`.github/workflows/ci.yml` の pg-harness ジョブは GitHub Actions 上で再現可能。
+## 2. 残る未検証（PENDING）と理由
 
-### 2.2 レジストリ遮断による PENDING（本サンドボックス固有）
-`npm run typecheck` / `lint` / `build`（node_modules 未取得のため）。
-`npm install` 可能な環境で `npm run verify` を実行すること。
-unit test は依存ゼロ構成のため本環境でも実行済み（1.2）。
+かつて本節に列挙していた実 Supabase 検証（PostgREST 経由 RLS・列 GRANT・RPC・実 JWT 3 ロール・招待メール一致・
+失敗監査別 Tx・Magic Link/Mailpit/再利用拒否/Cookie/signout のブラウザ E2E）は、**すべて Mac で実施済み・PASS**
+（§1.4: verify:supabase 28/28 ＋ e2e:local 7/7）。**残る既知の残課題（テスト PENDING）は以下の 4 分類**:
+
+| # | 項目 | 内容 | 理由 / PASS 済みの範囲 |
+|---|---|---|---|
+| 1 | **B10-refresh** | 期限切れ/間近トークンを強制して middleware の token refresh を実機検証 | 確実な強制手段が未実装。E2E はセッション維持のみ確認（PASS 済み） |
+| 2 | **B13-HTTP** | Next.js Server Action / route handler を通した実 HTTP 失敗監査 E2E | 未実装（DB/PostgREST 別 Tx 経路 B13-DB は PASS 済み） |
+| 3 | **AUTH-11 実機** | DB/RLS 障害を「所属なし」と区別し /error へ振り分ける経路の実機確認 | 障害注入手段が未整備（判定ロジックは実装・unit 済み） |
+| 4 | **AUTH-12..16 の認証済みロール・状態別 E2E** | ロール別認可 / 他法人 ID 拒否 / invited・suspended・left 状態別拒否を、各ロールの認証済みセッションで実機検証 | 未実装（判定純関数は OFFLINE_UNIT_PASS、**未認証の保護ルート拒否は E2E 実機 PASS 済み**） |
+
+上記とは別枠で、**CI リモート実走行（GitHub Actions での npm ci + verify + pg-harness）はコミット・push 後の実行待ち**
+（テストの PENDING ではなく実行手順上の待ち）。
+
+### 2.2 本クラウドサンドボックス固有の制約（記録）
+本サンドボックスは npm レジストリ遮断・Docker 不可のため、`npm run verify` / 実 Supabase 実行は不可能だった。
+**いずれも Mac 実機で実施済み・PASS**（§1.4）。本節は環境制約の記録として残す。
 
 ## 3. ハーネスの限界（PG_HARNESS_PASS ≠ Phase 1 完了）
 - 擬似 auth.uid()/JWT は GoTrue の実トークン検証を代替しない。
@@ -60,25 +194,28 @@ unit test は依存ゼロ構成のため本環境でも実行済み（1.2）。
 | Phase 0 コード | 再構築済み（成果物レビュー中） |
 | pure typecheck | 実行済み PASS（tsc 6.0.3・本環境） |
 | offline unit (41件) | 実行済み PASS（`npm run test:offline`・本環境） |
-| 正式 `npm run verify`（typecheck/lint/Vitest/build） | **PENDING**（npm 利用可能環境で実行） |
-| CI | **定義済みだが未成立**（package-lock.json 未生成のため npm ci が失敗） |
-| package-lock.json 生成 | **PENDING** |
-| 実 Supabase local | **PENDING**（Docker 必須） |
+| 正式 `npm run verify`（typecheck/lint/Vitest/build） | **APP_PASS（最新コード）**（Mac 2026-07-25。追加スクリプト・e2e・middleware 修正込みで typecheck/lint/Vitest 41/41/build 全10ルート成功） |
+| CI | 定義済み・lockfile コミット済み（8add410）。**リモート実走行はコミット・push 後に実施** |
+| package-lock.json 生成 | **完了**（8add410） |
+| 実 Supabase local: verify:supabase (B1..B5/B9/B13-DB/B15) | **SUPABASE_LOCAL_PASS**（Mac 2026-07-25, 28/28 PASS, run=mrzjqtj7） |
+| 実 Supabase local: E2E (B6..B8/B10(session)/B11/B12/B14/B16) | **SUPABASE_LOCAL_PASS**（Mac 2026-07-25, **7/7 PASS**） |
+| B10-refresh / B13-HTTP / AUTH-11 実機 / AUTH-12..16 認証済みロール・状態別 E2E | **PENDING**（未実装・未検証。**既知の残課題 4 分類として明示** — §2。未認証保護ルート拒否は PASS 済み） |
 
 ## 4. Phase 1 受入条件との対応（12.2）
 | 受入条件 | 状態 |
 |---|---|
-| Magic Link ログイン成立・再利用不可 | SUPABASE_PENDING |
-| 未所属 / suspended / left の法人アプリ拒否 | 判定ロジック APP_PASS + layout 実装済み / E2E PENDING |
-| 他法人データ越境不可（URL/payload 改変含む） | SQL 層 PG_HARNESS_PASS / PostgREST 層 PENDING |
+| Magic Link ログイン成立・再利用不可 | **SUPABASE_LOCAL_PASS**（e2e B6..B8: 送信→受信→単回ログイン→再利用拒否のフルライフサイクル） |
+| 未所属 / suspended / left の法人アプリ拒否 | 判定ロジック APP_PASS + layout 実装済み + 未認証拒否は E2E 実機確認 / 状態別（suspended/left）の実機 E2E は未実施 |
+| 他法人データ越境不可（URL/payload 改変含む） | SQL 層 PG_HARNESS_PASS + **PostgREST 層 SUPABASE_LOCAL_PASS**（B2/B15） |
 | SYSTEM_ADMIN 単独で法人アプリ・顧客案件へ入れない | 判定 APP_PASS + layout 実装済み |
-| profile email/system_role 直接更新不可 | PG_HARNESS_PASS |
-| 法人・membership 直接書込不可（業務関数のみ） | PG_HARNESS_PASS |
+| profile email/system_role 直接更新不可 | PG_HARNESS_PASS + **SUPABASE_LOCAL_PASS**（B3, PostgREST 経由） |
+| 法人・membership 直接書込不可（業務関数のみ） | PG_HARNESS_PASS + **SUPABASE_LOCAL_PASS**（B15） |
 | 最後の SYSTEM_ADMIN / ORGANIZATION_ADMIN の並行 0 人化不可 | PG_HARNESS_PASS (CONC-01/02) |
-| 成功監査同一Tx / 失敗監査別Tx | PG_HARNESS_PASS (FUNC-02/15) / アプリ経路実機 PENDING |
-| middleware refresh 後 Cookie が redirect でも維持 | 実装済み / 実機 PENDING |
-| 全 typecheck/lint/unit/build/E2E + AUTH/SEC | unit・pure typecheck・DB系 PASS / 残り PENDING |
+| 成功監査同一Tx / 失敗監査別Tx | PG_HARNESS_PASS (FUNC-02/15) + **DB/PostgREST 経路 SUPABASE_LOCAL_PASS**（B5/B13-DB）/ Next.js HTTP 経路（B13-HTTP）**PENDING** |
+| middleware refresh 後 Cookie が redirect でも維持 | Cookie 属性・redirect 後維持・セッション維持は **SUPABASE_LOCAL_PASS**（B10/B11）/ **token refresh の強制（B10-refresh）は PENDING** |
+| 全 typecheck/lint/unit/build/E2E + AUTH/SEC | **typecheck・lint・unit・build・DB系・verify:supabase 28/28・E2E 7/7 すべて PASS** |
 
-**結論: Phase 1 は「継続中」。** DB 層と純粋ロジックは検証済みだが、
-実 Supabase ローカル検証と `npm run verify` が完了するまで Phase 1 完了と
-みなさない（CLAUDE.md §24, §27）。
+**結論: Phase 1 の機能実装と主要実機検証は完了。**
+**B10-refresh・B13-HTTP・AUTH-11 実機・AUTH-12..16 の認証済みロール・状態別 E2E は既知の残課題**として明示
+（未実装・未検証であり PASS 扱いにしない。§2 参照）。**未認証保護ルート拒否など、すでに PASS した範囲は明示済み。**
+これとは別に **CI リモート実走行はコミット・push 後に実施。Phase 2 は未着手。**
