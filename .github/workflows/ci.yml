@@ -62,6 +62,6 @@ jobs:
           PGPASSWORD: postgres
         run: bash scripts/pg-harness/run.sh
 
-  # NOTE: 実Supabase（supabase start / PostgREST / GoTrue / Inbucket）検証は
+  # NOTE: 実Supabase（supabase start / PostgREST / GoTrue / Mailpit）検証は
   # Docker-in-Docker 構成の別 workflow として Phase 1 完了までに追加する。
   # 本番 Supabase へは接続しない。

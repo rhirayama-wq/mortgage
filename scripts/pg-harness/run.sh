@@ -2,7 +2,7 @@
 # ============================================================================
 # PGハーネス実行スクリプト — FICTIONAL / TEST ONLY / PRODUCTION USE PROHIBITED
 # ローカル PostgreSQL 16 に対して migration + テスト一式を適用する。
-# 実Supabase (PostgREST/GoTrue/Inbucket) の検証を代替するものではない。
+# 実Supabase (PostgREST/GoTrue/Mailpit) の検証を代替するものではない。
 #
 # 使用法: PGHOST=/tmp PGPORT=5433 PGUSER=postgres ./run.sh
 # ============================================================================
@@ -194,6 +194,6 @@ echo "CONC-02 PASSED"
 echo ""
 echo "==================================================="
 echo " PG HARNESS: ALL TESTS PASSED"
-echo " (real Supabase / PostgREST / GoTrue / Inbucket"
+echo " (real Supabase / PostgREST / GoTrue / Mailpit"
 echo "  validation is still SUPABASE_PENDING)"
 echo "==================================================="

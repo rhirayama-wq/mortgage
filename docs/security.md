@@ -83,6 +83,11 @@ EXECUTE は public/anon から revoke。トリガー関数・内部関数（app_
 ログ・URL・監査 metadata へメールアドレス等の PII を出さない（login 失敗ログはアドレス自体を抑制）。シード・テストは架空データのみ（fictional / test only 明記）。本番 Supabase 接続・本番 Magic Link 送信・本番シークレット設定は禁止。
 
 ## 9. 本番前の残リスク（phase1-validation.md と対応）
-- PostgREST / GoTrue / Inbucket / 実 JWT での検証未了（SUPABASE_PENDING）
-- Magic Link 有効期限・再利用拒否は GoTrue 実環境でのみ最終確認可能
+- PostgREST / GoTrue / Mailpit / 実 JWT による主要検証は完了（Mac 実機 `npm run verify:supabase` 28/28 PASS / `npm run e2e:local` 7/7 PASS）。
+- ただし以下 4 分類は **PENDING**（PASS 扱いにしない・Phase 1 完了を妨げない追加検証バックログ / phase1-validation.md §2）:
+  - B10-refresh（middleware token refresh の強制。期限切れ/間近トークンの強制手段が未整備）
+  - B13-HTTP（Next.js Server Action / route handler 経由の実 HTTP 失敗監査経路。HTTP 統合 E2E 未実装）
+  - AUTH-11 実機（DB/RLS 障害を「所属なし」と区別し /error へ振り分ける経路の実機確認。判定ロジックは実装・unit 検証済み）
+  - AUTH-12..16（ロール別認可 / 他法人 ID 拒否 / invited・suspended・left 状態別拒否の認証済みセッション E2E。判定純関数は OFFLINE_UNIT_PASS）
+- Magic Link の受信および使用済みリンクの再利用拒否は GoTrue local で確認済み（`npm run e2e:local` B8 PASS）。有効期限の境界値・期限切れリンクの時間経過を伴う追加検証は未実施
 - 初回 SYSTEM_ADMIN の本番ブートストラップ手順は運用手順書化が必要（app_bootstrap_first_system_admin を migration 管理経路で1回実行）

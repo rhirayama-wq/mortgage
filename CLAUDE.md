@@ -682,7 +682,7 @@ revoke all on table ... from anon, authenticated, service_role;
 * `PENDING`
 * `FAILED`
 
-PostgreSQLハーネスで通っても、実Supabase、PostgREST、GoTrue、Inbucketの検証が必要な項目は完了扱いにしない。
+PostgreSQLハーネスで通っても、実Supabase、PostgREST、GoTrue、Mailpitの検証が必要な項目は完了扱いにしない。
 失敗テストを隠さない。
 テストを通すために期待結果を弱めない。
 
@@ -776,7 +776,7 @@ Phase 1
 Phase 1は以下が通るまで完了扱いにしない。
 
 * Magic Link
-* Inbucket
+* Mailpit
 * 使用済みリンク再利用拒否
 * PostgREST
 * anon/authenticated/service_role
@@ -979,22 +979,27 @@ Phase status
 
 現時点では以下の状態である。
 
-* Phase 0：概ね完了
-* Phase 1 DB設計：PostgreSQLハーネスで予備検証済み
-* 実Supabase local：未完了
-* PostgREST：未検証
-* GoTrue：未検証
-* Inbucket：未検証
-* Magic Link UI・サーバ実装：途中
-* 認証関連コード：修正事項あり
-* Phase 1：継続中
+* Phase 0：完了
+* Phase 1 DB設計：PostgreSQLハーネス（PostgreSQL 16.13）で検証済み
+* 実Supabase local：検証済み（Mac実機 `npm run verify:supabase` 28/28 PASS）
+* PostgREST：検証済み
+* GoTrue：検証済み
+* Mailpit：検証済み（Magic Link受信・使用済みリンク再利用拒否）
+* Magic Link UI・サーバ実装：完了
+* 認証関連コード：修正完了（`npm run verify` PASS / Vitest 41/41 / `npm run e2e:local` 7/7 PASS）
+* CI（GitHub Actions）：実走行PASS（Run #4 / commit `2bbae3b`・全ジョブgreen）
+* Phase 1：機能実装・主要実機検証・CI実走行は完了（Phase 1クローズ）
+* 既知残課題4分類（B10-refresh / B13-HTTP / AUTH-11実機 / AUTH-12..16）：PENDING。Phase 1完了を妨げない追加検証バックログとして継続管理し、PASS扱いにしない
+* Phase 2：未着手（着手しない）
 * 顧客案件機能：未着手
 * 商品検索：未着手
 * 最終ゴール：Loan Checker＋モゲチェック融合
-* 直近目標：Phase 1を安全に完了
+* 直近目標：Phase 1は安全に完了済み。以後は既知残課題4分類の追加検証
 * その後の目標：MVP完成
 
 ## 37. 現在のPhase 1で優先する事項
+
+**状態（2026-07-25）: 以下の優先事項は実装・主要実機検証が完了している**（Mac実機 `npm run verify` / `npm run verify:supabase` 28/28 / `npm run e2e:local` 7/7、CI Run #4・commit `2bbae3b` 全ジョブgreen）。既知残課題4分類（B10-refresh / B13-HTTP / AUTH-11実機 / AUTH-12..16）はPENDINGのままであり、PASS扱いにしない。本リストは再検証時のチェックリストとして維持する。
 
 1. Magic Link送信のサーバー化
 2. callbackの安全化
@@ -1013,13 +1018,15 @@ Phase status
 15. JWT
 16. RLS
 17. column GRANT
-18. Inbucket
+18. Mailpit
 19. 使用済みリンク再利用拒否
 20. 失敗監査の別トランザクション実装
 
 ## 38. 直近の停止点
 
 以下が完了した時点で停止して報告する。
+
+**状態（2026-07-25）: 以下はすべて完了し、報告済み（Phase 1クローズ）。** 既知残課題4分類（B10-refresh / B13-HTTP / AUTH-11実機 / AUTH-12..16）はPENDINGのままで、PASS扱いにしない。Phase 2は未着手。本リストは再実行時のチェックリストとして維持する。
 
 * 認証コード修正
 * Server ActionまたはRoute HandlerによるMagic Link送信
@@ -1036,7 +1043,7 @@ Phase status
 * Supabase local
 * PostgREST
 * JWT
-* Inbucket
+* Mailpit
 * Magic Link
 * 使用済みリンク再利用拒否
 

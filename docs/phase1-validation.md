@@ -24,7 +24,11 @@
 > ③ **AUTH-11 実機**（/error 振り分けの実機確認）
 > ④ **AUTH-12..16 の認証済みロール・状態別 E2E**（ロール別認可 / 他法人 ID 拒否 / invited・suspended・left 状態別。
 >   ※ 未認証の保護ルート拒否は E2E 実機 PASS 済み）。いずれも PASS 扱いにしない。
-> これとは別に **CI リモート実走行はコミット・push 後の実行待ち**。**Phase 2 は未着手。**
+> **CI リモート実走行も完了（2026-07-25）**: GitHub Actions Run #4 / commit `2bbae3b` で全ジョブ green
+> （Linux クリーン環境 Node v22.23.1 / npm 11.12.1 で `npm ci` PASS、typecheck / lint / unit / build PASS、
+> PostgreSQL harness `PG HARNESS: ALL TESTS PASSED`）。
+> **結論: Phase 1 の機能実装・主要実機検証・CI 実走行は完了。上記 4 分類は Phase 1 完了を妨げない
+> 追加検証バックログとして継続管理する（PASS 扱いにしない）。Phase 2 は未着手。**
 > 非ブロッキングの将来課題は assumptions.md U18..U22 に記録。
 
 ## 1. 実行済み検証
@@ -174,8 +178,9 @@ Next.js `/login` 200 / Supabase Studio 307（`/project/default` へ）/ Mailpit 
 | 3 | **AUTH-11 実機** | DB/RLS 障害を「所属なし」と区別し /error へ振り分ける経路の実機確認 | 障害注入手段が未整備（判定ロジックは実装・unit 済み） |
 | 4 | **AUTH-12..16 の認証済みロール・状態別 E2E** | ロール別認可 / 他法人 ID 拒否 / invited・suspended・left 状態別拒否を、各ロールの認証済みセッションで実機検証 | 未実装（判定純関数は OFFLINE_UNIT_PASS、**未認証の保護ルート拒否は E2E 実機 PASS 済み**） |
 
-上記とは別枠で、**CI リモート実走行（GitHub Actions での npm ci + verify + pg-harness）はコミット・push 後の実行待ち**
-（テストの PENDING ではなく実行手順上の待ち）。
+上記とは別枠だった **CI リモート実走行（GitHub Actions での npm ci + verify + pg-harness）は 2026-07-25 に完了**
+（Run #4 / commit `2bbae3b`・全ジョブ green）。上記 4 分類は Phase 1 完了を妨げない追加検証バックログとして
+継続管理し、**PASS 扱いにしない**。
 
 ### 2.2 本クラウドサンドボックス固有の制約（記録）
 本サンドボックスは npm レジストリ遮断・Docker 不可のため、`npm run verify` / 実 Supabase 実行は不可能だった。
@@ -195,8 +200,8 @@ Next.js `/login` 200 / Supabase Studio 307（`/project/default` へ）/ Mailpit 
 | pure typecheck | 実行済み PASS（tsc 6.0.3・本環境） |
 | offline unit (41件) | 実行済み PASS（`npm run test:offline`・本環境） |
 | 正式 `npm run verify`（typecheck/lint/Vitest/build） | **APP_PASS（最新コード）**（Mac 2026-07-25。追加スクリプト・e2e・middleware 修正込みで typecheck/lint/Vitest 41/41/build 全10ルート成功） |
-| CI | 定義済み・lockfile コミット済み（8add410）。**リモート実走行はコミット・push 後に実施** |
-| package-lock.json 生成 | **完了**（8add410） |
+| CI | **実走行 PASS**（GitHub Actions Run #4 / commit `2bbae3b`・全ジョブ green。Node v22.23.1 / npm 11.12.1 で `npm ci` → typecheck / lint / unit / build、PostgreSQL harness `PG HARNESS: ALL TESTS PASSED`） |
+| package-lock.json 生成 | **完了**（8add410。2026-07-25 に version 欠落 optional スタブを `2bbae3b` で修復し、Linux クリーン環境の `npm ci` 成立を CI で確認） |
 | 実 Supabase local: verify:supabase (B1..B5/B9/B13-DB/B15) | **SUPABASE_LOCAL_PASS**（Mac 2026-07-25, 28/28 PASS, run=mrzjqtj7） |
 | 実 Supabase local: E2E (B6..B8/B10(session)/B11/B12/B14/B16) | **SUPABASE_LOCAL_PASS**（Mac 2026-07-25, **7/7 PASS**） |
 | B10-refresh / B13-HTTP / AUTH-11 実機 / AUTH-12..16 認証済みロール・状態別 E2E | **PENDING**（未実装・未検証。**既知の残課題 4 分類として明示** — §2。未認証保護ルート拒否は PASS 済み） |
@@ -218,4 +223,6 @@ Next.js `/login` 200 / Supabase Studio 307（`/project/default` へ）/ Mailpit 
 **結論: Phase 1 の機能実装と主要実機検証は完了。**
 **B10-refresh・B13-HTTP・AUTH-11 実機・AUTH-12..16 の認証済みロール・状態別 E2E は既知の残課題**として明示
 （未実装・未検証であり PASS 扱いにしない。§2 参照）。**未認証保護ルート拒否など、すでに PASS した範囲は明示済み。**
-これとは別に **CI リモート実走行はコミット・push 後に実施。Phase 2 は未着手。**
+**CI リモート実走行も完了**（GitHub Actions Run #4 / commit `2bbae3b`・全ジョブ green）。
+**Phase 1 の機能実装・主要実機検証・CI 実走行は完了。既知残課題 4 分類は Phase 1 完了を妨げない
+追加検証バックログとして継続管理する。Phase 2 は未着手。**

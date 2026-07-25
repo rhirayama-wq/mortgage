@@ -116,8 +116,8 @@
 | unit test (Vitest 正式) | APP_PASS | Vitest 3.2.7 で 41/41 PASS（最新コード, Mac, 2026-07-25） |
 | production build | APP_PASS | Next.js 15.5.21 build 成功（全10ルート生成, 最新コード, Mac, 2026-07-25） |
 | E2E | **SUPABASE_LOCAL_PASS** | e2e/auth.spec.ts **7/7 PASS**（Mac 2026-07-25。§7 B6..B12/B14/B16） |
-| CI (GitHub Actions) | 定義済み・未実行 | lockfile はコミット済み（8add410）。リモート push 後の実走行が未実施のため PASS とは報告しない |
-| package-lock.json 生成 | 完了 | Mac で生成・コミット（8add410） |
+| CI (GitHub Actions) | **APP_PASS**（実走行） | Run #4 / commit `2bbae3b` 全ジョブ green（2026-07-25）。Linux / Node v22.23.1 / npm 11.12.1 で `npm ci` → typecheck / lint / unit / build PASS、PostgreSQL harness `PG HARNESS: ALL TESTS PASSED` |
+| package-lock.json 生成 | 完了 | Mac で生成・コミット（8add410）。version 欠落 optional スタブを `2bbae3b` で修復し、Linux クリーン環境の `npm ci` 成立を CI で確認 |
 | 正式 `npm run verify` | **APP_PASS（最新コード）** | 本セッション追加ファイルを含む状態で typecheck+lint+Vitest(41/41)+build(全10ルート) 全成功（Mac, 2026-07-25）。**verify:supabase 28/28・e2e:local 7/7 も PASS**（下記 §7） |
 
 ## 7. Supabase local 自動化（B1..B16 / runbook §B）
@@ -184,5 +184,6 @@ verify-supabase は非ループバック URL への接続を拒否する（本�
 > ③ **AUTH-11 実機**（DB 障害を /error へ振り分ける経路の実機確認）
 > ④ **AUTH-12..16 の認証済みロール・状態別 E2E**（ロール別認可 / 他法人 ID 拒否 / invited・suspended・left 状態別。
 >   ※ **未認証の保護ルート拒否は E2E 実機 PASS 済み**）。
-> これとは別枠で **CI リモート実走行はコミット・push 後の実行待ち**（テスト PENDING とは区別）。
-> **結論: Phase 1 の機能実装と主要実機検証は完了。上記 4 分類は既知の残課題として明示。Phase 2 は未着手。**
+> **CI リモート実走行も完了**（GitHub Actions Run #4 / commit `2bbae3b`・全ジョブ green。テスト PENDING とは区別）。
+> **結論: Phase 1 の機能実装・主要実機検証・CI 実走行は完了。上記 4 分類は Phase 1 完了を妨げない
+> 追加検証バックログとして継続管理し、PASS 扱いにしない。Phase 2 は未着手。**

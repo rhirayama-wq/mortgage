@@ -1,7 +1,10 @@
 # Phase 1 残作業ランブック（npm + Docker 利用可能環境で実施）
 
-前提: Phase 1A DB 層はレビュー承認済み（phase1-validation.md 冒頭）。
-本書の A・B が完了し結果を提示するまで **Phase 1 完了とは報告しない**。Phase 2 へ進まない。
+**状態（2026-07-25）: 本書の A・B は Mac 実機で完了済み。CI 実走行（Run #4 / commit `2bbae3b`）も全ジョブ green。**
+以後、本書は再実行・再現手順のリファレンスとして維持する（新規の残作業リストではない）。
+既知残課題 4 分類（B10-refresh / B13-HTTP / AUTH-11 実機 / AUTH-12..16 の認証済みロール・状態別 E2E）は
+**PENDING のまま**、Phase 1 完了を妨げない追加検証バックログとして継続管理する（phase1-validation.md §2）。
+**Phase 2 へは進まない。**
 **本番 Supabase へは接続しない。ローカルスタックのみ使用する。**
 
 ## 0. 前提ツール
@@ -26,10 +29,8 @@
 ## A. 正式品質ゲート
 ```bash
 cd app
-npm install                  # package-lock.json が生成される
+npm ci                       # lockfile 固定インストール（lockfile はコミット済み）
 npm run verify               # typecheck + eslint + vitest + production build
-git add package-lock.json
-git commit -m "chore: add package-lock.json (first npm install)"
 ```
 確認・報告事項:
 1. `npm run typecheck`（全体 tsc）エラー0
@@ -37,7 +38,7 @@ git commit -m "chore: add package-lock.json (first npm install)"
 3. `npm run test`（**正式 Vitest**）41件 PASS（test:offline と同一ファイル・同一アサーション）
 4. `npm run build`（production build）成功
    - build には `.env.local` が必要: `cp .env.example .env.local`（値は B の supabase start 出力で置換）
-5. lockfile コミット後、CI（GitHub に push した場合）の `npm ci` が成立すること
+5. CI（GitHub Actions）で Linux クリーン環境の `npm ci` が成立すること → **Run #4 / `2bbae3b` で確認済み**
 > 依存解決で型エラー等が出た場合はバージョン調整が必要になり得る（package.json はレジストリ遮断環境で
 > 未解決のまま宣言されているため）。修正した場合は変更点を記録すること。
 
@@ -80,7 +81,7 @@ npm run dev
 | B4 | 各ロール JWT | anon / authenticated / service_role それぞれの鍵で挙動差を確認 |
 | B5 | 業務 RPC | rpc/app_invite_organization_member 等を PostgREST 経由で呼び、認可・監査を確認 |
 | B6 | Magic Link | /login から送信（shouldCreateUser:false。未登録メールでも同一応答: AUTH-01） |
-| B7 | Inbucket | http://127.0.0.1:54324 で受信。リンクが /auth/callback?token_hash=...&type=email 形式であること |
+| B7 | Mailpit | http://127.0.0.1:54324 で受信。リンクが /auth/callback?token_hash=...&type=email 形式であること |
 | B8 | 使用済みリンク再利用拒否 | 同一リンクを2回開く → 2回目は /login?e=link（AUTH-18） |
 | B9 | 招待先メール一致 | FUNC-03 相当を実 GoTrue ユーザーで（メール変更→accept 拒否: AUTH-19） |
 | B10 | middleware refresh Cookie | 期限切れ間際セッションでアクセスし Set-Cookie を確認（AUTH-09/10） |

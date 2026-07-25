@@ -16,7 +16,7 @@
   依存ゼロの純粋モジュール検証（tsc + `npm run test:offline` シム）と PostgreSQL ハーネスで代替し、
   残りは `npm run verify` を npm 取得可能環境で実行する。
 - **Docker は利用不可**（デーモン未起動）。**Supabase CLI 未導入**。
-  → `supabase start` に依存する **PostgREST / GoTrue / Inbucket / Magic Link / 実JWT 検証は本環境では実行不可**。
+  → `supabase start` に依存する **PostgREST / GoTrue / Mailpit / Magic Link / 実JWT 検証は本環境では実行不可**。
   → 実Supabaseローカル検証は Docker 可能環境（ユーザーの Mac に Docker Desktop、または CI）で行う必要がある。
 - ローカル PostgreSQL サーバは要インストール（psql クライアントのみ既存）。SQLレベルのハーネス検証は再現可能。
 - 本番Supabaseへは接続しない。本番Magic Link送信・本番ユーザー作成・本番シークレット設定を行わない。
@@ -98,7 +98,7 @@
 | # | 箇所 | 問題 | 扱い |
 |---|---|---|---|
 | D1 | CLAUDE.md §36「現在地」 | 「Phase 0 概ね完了」「Phase 1 DB設計 PGハーネス予備検証済み」「Magic Link UI 途中」は**前チャット時点の状態**。実際にはその成果物（コード・SQL・テスト）は喪失済みで、2026-07-24 から要件定義書を正として再構築中。 | §36 はユーザー指定の原文のまま維持。実際の現在地は本ファイル §0 と phase1-validation.md を正とする。再構築で同状態へ到達し次第、乖離は解消される |
-| D2 | CLAUDE.md §38「直近の停止点」の Supabase local / PostgREST / JWT / Inbucket 項目 | 本クラウドサンドボックスは Docker 不可のため、これらは本環境では実行不能（§1 環境制約）。 | Docker 可能環境（ユーザーMac の Docker Desktop または CI）で実施。実施までは Phase 1 を「継続中」とし完了扱いにしない |
+| D2 | CLAUDE.md §38「直近の停止点」の Supabase local / PostgREST / JWT / Mailpit 項目 | 本クラウドサンドボックスは Docker 不可のため、これらは本環境では実行不能（§1 環境制約）。 | Docker 可能環境（ユーザーMac の Docker Desktop または CI）で実施。実施までは Phase 1 を「継続中」とし完了扱いにしない |
 
 ## 4. 変更履歴
 - 2026-07-24: 前チャット成果の喪失を確認。要件定義書を正として Phase 1 を再構築する方針を確定。

@@ -84,7 +84,7 @@ scripts/pg-harness/... (psql による SQL レベル検証)
 
 ## 5. 実 Supabase 検証計画（Docker 前提）
 本サンドボックスは Docker 不可のため **本環境では実行不可**。以下は Docker 可能環境で実施:
-`supabase start` / `supabase db reset` → PostgREST 経由の RLS/GRANT/RPC、GoTrue Magic Link、Inbucket 受信、
+`supabase start` / `supabase db reset` → PostgREST 経由の RLS/GRANT/RPC、GoTrue Magic Link、Mailpit 受信、
 使用済みリンク再利用不可、invite メール一致、middleware Cookie refresh、失敗監査の別Tx を検証。
 候補環境: (a) ユーザーの Mac に Docker Desktop、(b) CI(GitHub Actions 等)。**本番Supabaseには接続しない**。
 
