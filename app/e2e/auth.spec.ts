@@ -16,11 +16,15 @@
  */
 
 import { test, expect, type APIRequestContext } from "@playwright/test";
+import { MAGIC_LINK_LIFECYCLE_EMAIL } from "./fixtures/identities";
 
 const hasLocalSupabase = !!process.env.E2E_SUPABASE_LOCAL;
 const MAILPIT_URL = process.env.MAILPIT_URL ?? "http://127.0.0.1:54324";
-// seed.sql がブートストラップする架空の SYSTEM_ADMIN（登録済みメール）
-const SEEDED_EMAIL = "sysadmin.fictional@example.test";
+// AUTH-E2E-06 専用の架空ユーザー（seed.sql が作る登録済みメール）。
+// SYSTEM_ADMIN fixture とは意図的に別ユーザー: 本テストの signout は
+// supabase.auth.signOut() の既定 scope "global" でそのユーザーの全セッションを
+// 失効させるため、fixture と共有すると auth-setup 発行の storageState を壊す。
+const LIFECYCLE_EMAIL = MAGIC_LINK_LIFECYCLE_EMAIL;
 // カスタムテンプレート固有値（supabase/templates/magic_link.html）
 const TEMPLATE_SUBJECT = "ログイン用リンク";
 const TEMPLATE_MARKER = "心当たりがない場合"; // 本文固有の固定文言
@@ -187,12 +191,12 @@ test.describe("AUTH E2E (requires local Supabase)", () => {
     // B6: /login からサーバー経由で送信（登録有無を区別しない共通応答）
     await clearMailpit(request);
     await page.goto("/login");
-    await page.getByLabel("メールアドレス").fill(SEEDED_EMAIL);
+    await page.getByLabel("メールアドレス").fill(LIFECYCLE_EMAIL);
     await page.getByRole("button", { name: "ログイン用リンクを送信" }).click();
     await expect(page.getByRole("status")).toContainText("登録されている場合");
 
     // B7: 件名・カスタムテンプレート固定文言・callback リンク形状を検証（token/本文は出力しない）
-    const mail = await waitForMagicLink(request, SEEDED_EMAIL);
+    const mail = await waitForMagicLink(request, LIFECYCLE_EMAIL);
     expect(mail.subject, "subject == custom template subject").toBe(
       TEMPLATE_SUBJECT,
     );

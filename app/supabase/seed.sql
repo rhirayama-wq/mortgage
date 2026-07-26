@@ -102,3 +102,89 @@ begin
     );
   end if;
 end $$;
+
+-- ============================================================================
+-- 4. Magic Link ライフサイクル / signout 契約 E2E（AUTH-E2E-06）専用の架空ユーザー。
+--    FICTIONAL / TEST ONLY。
+--
+--    分離理由（重要）:
+--      `/auth/signout` は `supabase.auth.signOut()` を既定オプションで呼ぶ。
+--      @supabase/auth-js の既定 scope は 'global' であり、そのユーザーの
+--      **全セッション**を GoTrue 側で失効させる。
+--      この signout 契約テストが SYSTEM_ADMIN fixture と同じユーザーを使うと、
+--      auth-setup が先に発行した SYSTEM_ADMIN の storageState まで巻き添えで失効し、
+--      後続の認証済み E2E（AUTH-E2E-14 / 17）が /login へ落ちる。
+--      そのため lifecycle 用に専用ユーザーを用意し、fixture ユーザーと共有しない。
+--
+--    役割要件: 「登録済み（shouldCreateUser=false でも Magic Link が送られる）だが、
+--    system_role を持たず、いかなる法人にも所属しない」ユーザー。
+--    → 認証後の着地は /no-access。AUTH-E2E-06 の各アサーション
+--      （/login へ戻されない・Cookie 属性・signout 303・以後 /cases→/login）は
+--      いずれも所属状態に依存しないため成立する。
+--
+--    構造は上記 1./2. と同じ GoTrue 正規形。password は seed しない。冪等。
+--    system_role は付与しない（3. の bootstrap 対象にもしない）。
+-- ============================================================================
+insert into auth.users (
+  instance_id,
+  id,
+  aud,
+  role,
+  email,
+  email_confirmed_at,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  created_at,
+  updated_at,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change
+)
+values (
+  '00000000-0000-0000-0000-000000000000',
+  '00000000-0000-4000-8000-00000000e2e6',
+  'authenticated',
+  'authenticated',
+  'magiclink-lifecycle.fictional@example.test',
+  now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{}'::jsonb,
+  now(),
+  now(),
+  '',
+  '',
+  '',
+  ''
+)
+on conflict (id) do nothing;
+
+insert into auth.identities (
+  id,
+  user_id,
+  provider_id,
+  provider,
+  identity_data,
+  last_sign_in_at,
+  created_at,
+  updated_at
+)
+select
+  gen_random_uuid(),
+  '00000000-0000-4000-8000-00000000e2e6',
+  '00000000-0000-4000-8000-00000000e2e6',
+  'email',
+  jsonb_build_object(
+    'sub', '00000000-0000-4000-8000-00000000e2e6',
+    'email', 'magiclink-lifecycle.fictional@example.test',
+    'email_verified', true
+  ),
+  now(),
+  now(),
+  now()
+where not exists (
+  select 1
+    from auth.identities
+   where provider = 'email'
+     and provider_id = '00000000-0000-4000-8000-00000000e2e6'
+);
