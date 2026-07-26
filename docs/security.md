@@ -79,15 +79,26 @@ EXECUTE は public/anon から revoke。トリガー関数・内部関数（app_
 - signout は POST のみ（GET は 405）。
 - service role key はサーバー専用（`NEXT_PUBLIC_` 禁止、browser アクセスで throw）。
 
+## 7.1 認証済み E2E 基盤のセキュリティ姿勢（AUTH-12..16 / B17）
+- 認証済みセッションは Playwright の `auth-setup` project が **storageState** として生成し、各テストは fixture 経由で再利用する。**Cookie / token を手動注入しない**（`/auth/callback?token_hash=...&type=email` を開き、アプリの実 verifyOtp 経路に実 Cookie を発行させる）。token_hash は GoTrue Admin API `generateLink` から取得し、**メールは送信しない**。
+- storageState は `app/.auth/` に置き、**Git 管理対象外**（`app/.gitignore`）。実行のたびに作り直し、stale session を使わない。実行時に変わる法人 ID / membership ID は `app/.auth/fixtures.json` へ書き出して参照する（ハードコードしない）。
+- Cookie 値・auth token・token_hash・Magic Link URL・anon key・service role key・`.env.local` の内容は、標準出力にもアサーション差分にも出さない。着地の診断は **pathname のみ**を使う（`expectLanding`）。
+- fixture ユーザー 8 種類はすべて架空で **`@example.test`** のみ。法人名も `E2E検証法人A（架空）` / `E2E検証法人B（架空）`。パスワードや共通秘密値をコードへ埋め込まない。
+- **lifecycle 専用ユーザーの分離**: `/auth/signout` は `supabase.auth.signOut()` を既定の `scope: "global"` で呼び、そのユーザーの GoTrue セッションを全て失効させる。signout を伴う Magic Link ライフサイクルテスト（AUTH-E2E-06）が SYSTEM_ADMIN fixture と同一ユーザーだったため storageState が巻き添え失効していた。seed レベルで `magiclink-lifecycle.fictional@example.test` へ分離し、`identities.ts` に共有検出の throw ガードを置いた。**production の signOut は global scope のまま維持する**（テストの都合でセッション破棄の意味論を弱めない）。順序変更 / retry / timeout 延長 / skip / 期待値の弱体化では解決していない。
+- 実 Supabase local に対する実 HTTP で、SYSTEM_ADMIN 境界・ORGANIZATION_ADMIN / SALES_USER の着地・invited / suspended / left の状態別拒否・他法人 ID 差し替え拒否（URL / query / request body）を確認済み。拒否の形は **403 ではなく redirect**（fail closed の設計どおり）。
+- fixture の用意は公開業務関数のみを使い、**migration / RLS / GRANT / `scripts/pg-harness/00_shim_supabase.sql` は一切変更していない**。接続先はループバックのみ（本番接続禁止・CLAUDE.md §32）。
+
 ## 8. PII・秘密
 ログ・URL・監査 metadata へメールアドレス等の PII を出さない（login 失敗ログはアドレス自体を抑制）。シード・テストは架空データのみ（fictional / test only 明記）。本番 Supabase 接続・本番 Magic Link 送信・本番シークレット設定は禁止。
 
 ## 9. 本番前の残リスク（phase1-validation.md と対応）
-- PostgREST / GoTrue / Mailpit / 実 JWT による主要検証は完了（Mac 実機 `npm run verify:supabase` 28/28 PASS / `npm run e2e:local` 7/7 PASS）。
+- PostgREST / GoTrue / Mailpit / 実 JWT による主要検証は完了（Mac 実機 `npm run verify:supabase` 28/28 PASS / `npm run e2e:local` **22/22 PASS を 2 回連続** / `npm run e2e:auth` **15/15 PASS**）。22 件の内訳は **既存 E2E 7 + auth setup 1 + 認証済み E2E 14（AUTH-E2E-12..25）**で、auth setup は業務テスト 14 件とは別に数える。
+- **AUTH-12..16（ロール別認可 / 他法人 ID 拒否 / invited・suspended・left 状態別拒否の認証済みセッション E2E）は SUPABASE_LOCAL_PASS**（§7.1 / test-cases.md §5.1・B17）。**限界: Phase 1 に ORGANIZATION_ADMIN 専用の HTTP ルートが無いため、ORGANIZATION_ADMIN と SALES_USER の管理操作差分は HTTP 層では未検証。DB 層のロール差分は PG harness で検証済みであり、HTTP 層で検証できるロール境界は SYSTEM_ADMIN 境界のみ。**
 - ただし以下 4 分類は **PENDING**（PASS 扱いにしない・Phase 1 完了を妨げない追加検証バックログ / phase1-validation.md §2）:
   - B10-refresh（middleware token refresh の強制。期限切れ/間近トークンの強制手段が未整備）
-  - B13-HTTP（Next.js Server Action / route handler 経由の実 HTTP 失敗監査経路。HTTP 統合 E2E 未実装）
+  - B13-HTTP（Next.js Server Action / route handler 経由の実 HTTP 失敗監査経路。HTTP 統合 E2E 未実装）。**AUTH-E2E-25 の実行時に出る `[audit] failure-audit write failed correlation=...` はこの B13-HTTP の既知ログであり、AUTH-12..16 の FAIL ではない。**
   - AUTH-11 実機（DB/RLS 障害を「所属なし」と区別し /error へ振り分ける経路の実機確認。判定ロジックは実装・unit 検証済み）
-  - AUTH-12..16（ロール別認可 / 他法人 ID 拒否 / invited・suspended・left 状態別拒否の認証済みセッション E2E。判定純関数は OFFLINE_UNIT_PASS）
+  - Magic Link 有効期限の境界検証（期限切れリンクの時間経過を伴う検証。強制手段が未整備）
+- npm audit の high severity 12 件は、上記テストの PENDING とは**別枠**のセキュリティ負債として管理する（`npm audit fix` / `--force` / `--legacy-peer-deps` は使わない）。
 - Magic Link の受信および使用済みリンクの再利用拒否は GoTrue local で確認済み（`npm run e2e:local` B8 PASS）。有効期限の境界値・期限切れリンクの時間経過を伴う追加検証は未実施
 - 初回 SYSTEM_ADMIN の本番ブートストラップ手順は運用手順書化が必要（app_bootstrap_first_system_admin を migration 管理経路で1回実行）
