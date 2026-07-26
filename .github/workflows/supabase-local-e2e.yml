@@ -1,0 +1,216 @@
+name: Supabase local E2E
+
+# 実 Supabase local stack を GitHub Actions 上で起動し、
+#   1. supabase start
+#   2. supabase db reset
+#   3. npm run verify:supabase
+#   4. npm run e2e:local        （auth-setup + authenticated を dependencies 経由で含む）
+# を実行する。既存の .github/workflows/ci.yml（typecheck / lint / unit / build /
+# PostgreSQL harness）は高速 quality gate として据え置き、こちらは責務を分離した
+# 低速・重量ジョブとして独立させる。
+#
+# セキュリティ方針（CLAUDE.md §23 / §32 / §33、docs/security.md）:
+#   - 本番 Supabase へは一切接続しない。URL は必ず loopback。
+#   - GitHub Secrets に本番 Supabase の鍵を登録しない。このワークフローは
+#     リポジトリ Secrets を 1 つも参照しない（GITHUB_TOKEN は自動発行トークン）。
+#   - supabase link / supabase db push は実行しない。
+#   - anon key / service role key を標準出力へ出さない。`supabase status` を
+#     引数なしで実行しない（pretty 出力は鍵を平文で表示するため）。
+#   - set -x を使わない。shell trace で秘密値を露出させない。
+#   - .env.local を生成しない（fixtures/env.ts の loadDotEnvLocal は既存
+#     process.env を上書きしないため、step env だけで成立する）。
+#   - artifact を一切アップロードしない（理由は下部の NOTE を参照）。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/supabase-local-e2e.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - ".github/workflows/supabase-local-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-local-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  supabase-local-e2e:
+    name: Supabase local stack (verify:supabase + e2e:local)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: app
+
+    env:
+      # local stack 固定値。app/supabase/config.toml と 1:1 で対応する。
+      # 秘密値ではない。鍵だけを supabase status から取得する。
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      MAILPIT_URL: http://127.0.0.1:54324
+      APP_ORIGIN: http://localhost:3000
+      # Supabase CLI のバージョンは明示的に固定する（未指定だと latest に解決され、
+      # config.toml と CLI の世代差で再現性が失われるため）。
+      SUPABASE_CLI_VERSION: 2.109.1
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      # app/package-lock.json は npm 11.12.1 で生成（lockfileVersion 3）。
+      # 既存 ci.yml と同じバージョンへ固定し、lockfile を書き換えない。
+      - name: Pin npm to lockfile-generating version
+        run: npm install -g npm@11.12.1
+
+      - name: Show toolchain versions
+        run: |
+          node --version
+          npm --version
+          docker --version
+
+      - name: Install dependencies (lockfile-exact)
+        run: npm ci
+
+      # Playwright は chromium のみ使用（playwright.config.ts に projects は
+      # e2e / auth-setup / authenticated の 3 つ、browser 指定は既定の chromium）。
+      # retry でダウンロード失敗を隠さない（1 回だけ実行し、失敗したら FAIL）。
+      - name: Install Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+          # GitHub API のレート制限回避用。自動発行の read-only トークンであり、
+          # リポジトリ Secrets ではない。
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 本番へ向かう経路が存在しないことを、起動前に構造的に確認する。
+      - name: Guard - no linked project, no access token
+        run: |
+          set -euo pipefail
+          if [ -n "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "SUPABASE_ACCESS_TOKEN is set; refusing to run (production access is prohibited)" >&2
+            exit 1
+          fi
+          if [ -e supabase/.temp/project-ref ]; then
+            echo "supabase/.temp/project-ref exists; refusing to run (linked project is prohibited)" >&2
+            exit 1
+          fi
+          echo "guard ok: no access token, no linked project"
+
+      - name: Start Supabase local stack
+        run: supabase start
+
+      - name: Reset database (migrations + seed.sql)
+        run: supabase db reset
+
+      # `supabase status` を引数なしで実行しない。-o env の結果は変数へ入れ、
+      # 標準出力へは一切流さない。取り出した鍵は即座に ::add-mask:: へ登録する。
+      - name: Export local Supabase credentials (values are never printed)
+        run: |
+          set -euo pipefail
+          status_env="$(supabase status -o env)"
+
+          read_key() {
+            printf '%s\n' "$status_env" \
+              | sed -n "s/^$1=//p" \
+              | tail -n 1 \
+              | sed -e 's/^"//' -e 's/"$//'
+          }
+
+          api_url="$(read_key API_URL)"
+          anon_key="$(read_key ANON_KEY)"
+          service_key="$(read_key SERVICE_ROLE_KEY)"
+
+          if [ -z "$api_url" ] || [ -z "$anon_key" ] || [ -z "$service_key" ]; then
+            echo "failed to read API_URL / ANON_KEY / SERVICE_ROLE_KEY from 'supabase status -o env'" >&2
+            echo "keys present in output (names only, no values):" >&2
+            printf '%s\n' "$status_env" | sed -n 's/^\([A-Za-z_][A-Za-z_0-9]*\)=.*/  \1/p' >&2
+            exit 1
+          fi
+
+          echo "::add-mask::$anon_key"
+          echo "::add-mask::$service_key"
+
+          # 実行時に得られた API URL が loopback であることを確認する。
+          # ここが本番接続に対する最後の構造的ガード。
+          case "$api_url" in
+            http://127.0.0.1:*|http://localhost:*|http://\[::1\]:*) ;;
+            *)
+              echo "supabase status reported a non-loopback API URL; refusing to continue" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ "$api_url" != "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+            echo "API URL mismatch: status=$api_url expected=$NEXT_PUBLIC_SUPABASE_URL" >&2
+            exit 1
+          fi
+
+          printf 'NEXT_PUBLIC_SUPABASE_ANON_KEY=%s\n' "$anon_key" >> "$GITHUB_ENV"
+          printf 'SUPABASE_SERVICE_ROLE_KEY=%s\n' "$service_key" >> "$GITHUB_ENV"
+
+          echo "captured: API_URL=$api_url, ANON_KEY=<masked>, SERVICE_ROLE_KEY=<masked>"
+
+      - name: Guard - all endpoints are loopback
+        run: |
+          set -euo pipefail
+          for url in "$NEXT_PUBLIC_SUPABASE_URL" "$MAILPIT_URL" "$APP_ORIGIN"; do
+            case "$url" in
+              http://127.0.0.1:*|http://localhost:*|http://\[::1\]:*) ;;
+              *)
+                echo "non-loopback endpoint rejected: $url" >&2
+                exit 1
+                ;;
+            esac
+          done
+          echo "loopback guard ok"
+
+      - name: DB-level verification (verify:supabase)
+        run: npm run verify:supabase
+
+      # e2e:auth（--project=authenticated, 17 件）は e2e:local（24 件）の真部分集合。
+      # e2e:local は auth-setup を dependencies 経由で必ず実行するため、
+      # e2e:auth を別途実行すると authenticated 16 件と setup 1 件が二重に走る。
+      # CI では e2e:local のみを実行する（Mac ローカル runbook は従来どおり両方）。
+      #
+      # Playwright の webServer は E2E_SUPABASE_LOCAL=1 のときだけ有効化され、
+      # `npm run dev` を自前で起動する（playwright.config.ts）。
+      # そのため CI 側で dev server を起動する step は不要。
+      - name: Full E2E against local Supabase (e2e:local)
+        run: npm run e2e:local
+
+      - name: Diagnostics on failure (container status only, no secrets)
+        if: failure()
+        run: docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+
+      - name: Stop Supabase local stack
+        if: always()
+        continue-on-error: true
+        run: supabase stop --no-backup
+
+# NOTE: artifact を意図的にアップロードしない
+#   playwright.config.ts は `trace: "retain-on-failure"` を設定している。
+#   Playwright の trace / HTML report は失敗時のネットワーク往復をそのまま含むため、
+#   sb-* 認証 Cookie、Authorization ヘッダ、GoTrue のレスポンス（access_token /
+#   refresh_token）、Mailpit から取得した Magic Link URL、anon key が
+#   trace.zip の中に入り得る。app/.auth/*.json（storageState）と
+#   app/.auth/fixtures.json も同様。
+#   ユーザー指示「artifact へ保存する前に、storageState や秘密情報を含まないことを
+#   確認してください。安全性が確証できなければ artifact 保存は実装しないでください」
+#   に従い、安全性を確証できないため artifact ステップは実装しない。
+#   失敗診断は Playwright の標準出力（テスト名・エラーメッセージ・correlation ID）と
+#   上の docker ps のみで行う。
