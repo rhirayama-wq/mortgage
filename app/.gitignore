@@ -14,3 +14,6 @@ next-env.d.ts
 playwright-report/
 test-results/
 coverage/
+
+# E2E authenticated session state（Cookie/token を含むためコミット禁止）
+.auth/
