@@ -1,9 +1,25 @@
-# Phase 1 残作業ランブック（npm + Docker 利用可能環境で実施）
+# Phase 1 検証ランブック（完了済み検証の再実行・回帰調査用 / npm + Docker 利用可能環境で実施）
 
-**状態（2026-07-25）: 本書の A・B は Mac 実機で完了済み。CI 実走行（Run #4 / commit `2bbae3b`）も全ジョブ green。**
-以後、本書は再実行・再現手順のリファレンスとして維持する（新規の残作業リストではない）。
-既知残課題 4 分類（B10-refresh / B13-HTTP / AUTH-11 実機 / AUTH-12..16 の認証済みロール・状態別 E2E）は
-**PENDING のまま**、Phase 1 完了を妨げない追加検証バックログとして継続管理する（phase1-validation.md §2）。
+**状態（2026-07-26）: 本書の A・B は Mac 実機で完了済み。CI 実走行（Run #4 / commit `2bbae3b`）も全ジョブ green。**
+**本書は新規の残作業リストではない。** 完了済み検証の再実行手順、および回帰が疑われるときの
+調査 runbook として維持する。各項目の現在の状態は test-cases.md §7（B1..B17）と
+phase1-validation.md §1.4〜§1.6 を正とし、本書は手順のみを持つ。
+
+完了済み（本書の手順は再実行・回帰調査用として残す）:
+- **AUTH-12..16（認証済みロール・状態別 E2E）= SUPABASE_LOCAL_PASS**（B17 / AUTH-E2E-12..25 の 14 件。test-cases.md §5.1）
+- **B13-HTTP（Next.js Server Action 経由の実 HTTP 失敗監査経路）= SUPABASE_LOCAL_PASS**
+  （AUTH-E2E-26/27 の 2 件。phase1-validation.md §1.6）
+
+既知の主要残課題は次の 3 分類のみで、いずれも Phase 1 完了を妨げない追加検証バックログである
+（phase1-validation.md §2）:
+
+1. **B10-refresh**（AUTH-10 / 下表 B10）
+2. **AUTH-11 実機**
+3. **Magic Link 有効期限の境界検証**
+
+別枠のバックログ: npm audit high severity 12 件 /
+実 Supabase local 検証（verify:supabase・e2e:local）の CI 化 / Phase 2。
+
 **Phase 2 へは進まない。**
 **本番 Supabase へは接続しない。ローカルスタックのみ使用する。**
 
@@ -35,7 +51,11 @@ npm run verify               # typecheck + eslint + vitest + production build
 確認・報告事項:
 1. `npm run typecheck`（全体 tsc）エラー0
 2. `npm run lint`（eslint-config-next）エラー0
-3. `npm run test`（**正式 Vitest**）41件 PASS（test:offline と同一ファイル・同一アサーション）
+3. `npm run test`（**正式 Vitest**）**55/55 PASS**（Mac 2026-07-26 実測。内訳 access 11 /
+   audit 14 / otp 3 / safe-next 9 / validators 11 / bps 7）。
+   `npm run test:offline` は **41/41** で、これは矛盾ではない。`test:offline` は
+   `bps` / `safe-next` / `otp` / `validators` / `access` の明示列挙であり、`vi.mock` に依存する
+   `audit.test.ts`（14 件）を含まないため。差 14 件はこの一点に起因する。
 4. `npm run build`（production build）成功
    - build には `.env.local` が必要: `cp .env.example .env.local`（値は B の supabase start 出力で置換）
 5. CI（GitHub Actions）で Linux クリーン環境の `npm ci` が成立すること → **Run #4 / `2bbae3b` で確認済み**
@@ -87,15 +107,30 @@ npm run dev
 | B10 | middleware refresh Cookie | 期限切れ間際セッションでアクセスし Set-Cookie を確認（AUTH-09/10） |
 | B11 | redirect 時 Cookie 属性維持 | 未認証で /cases → /login リダイレクトの Set-Cookie に httpOnly/path/sameSite 等が維持されること |
 | B12 | signout POST | POST /auth/signout → 303。GET → 405（AUTH-17） |
-| B13 | 失敗監査 別HTTP・別Tx | 他人の招待 accept を改変リクエストで試行 → RPC 失敗後、authoritative_audit_logs に success=false 行（service_role 経由・correlation 付き） |
-| B14 | AUTH 対象テスト | AUTH-01..20 のうち SUPABASE_PENDING 項目（test-cases.md §5） |
+| B13-DB | 失敗監査の別Tx（DB / PostgREST 単体） | `npm run verify:supabase` の B13a/b/c。service_role で `app_record_membership_accept_failure` を直接呼び、別トランザクションでの記録・correlation 冪等性・SEC-83/86 のガードを確認する（**アプリの HTTP 経路は通らない**） |
+| B13-HTTP | 失敗監査の別Tx（実 HTTP 経路） | `npm run e2e:auth` の AUTH-E2E-26/27。**正当な業務失敗**（26）は別 PostgREST リクエスト / 別 Tx で `success=false` 行が **1 件**記録される。**actor と membership 本人が一致しない偽造監査**（27）は SEC-83 が拒否し **監査行 0 件**（`failure-audit refused by actor/membership guard` の warn が出るのが正常であり、`failure-audit write failed` ではない）。監査行の読取は SYSTEM_ADMIN の認証済み session + RLS 経由（service_role にこのテーブルの SELECT 権限は無い） |
+| B14 | AUTH 対象テスト | AUTH-01..20 の実 Supabase 必要分（test-cases.md §5）。**AUTH-12..16 は SUPABASE_LOCAL_PASS 済み**。回帰調査時に残る点検対象は AUTH-10 refresh 強制・AUTH-11 実機のみ |
 | B15 | Supabase 対象 SEC | SEC の PostgREST 経由再確認（越境・直接書込・監査保護） |
-| B16 | Playwright E2E | `E2E_SUPABASE_LOCAL=1 npm run e2e`（e2e/auth.spec.ts） |
+| B16 | Playwright E2E | `npm run e2e:local`（**24 件** = 既存 E2E 7 + auth setup 1 + 認証済み E2E 16）。認証済み分のみは `npm run e2e:auth`（**17 件** = auth setup 1 + 16） |
+| B17 | 認証済みロール・状態別 E2E 基盤 | `auth-setup` project の storageState 再利用 + `e2e/authenticated/authz.spec.ts`（AUTH-E2E-12..25 の 14 件）+ `e2e/authenticated/audit-http.spec.ts`（AUTH-E2E-26/27 の 2 件）。**SUPABASE_LOCAL_PASS**（test-cases.md §5.1 / §7 B17） |
 
-### 完了報告に含めるもの
-実行コマンドと終了コード / supabase CLI・スタックのバージョン / B1..B16 の PASS・FAIL 一覧 /
+### 再実行・回帰調査時の報告に含めるもの
+実行コマンドと終了コード / supabase CLI・スタックのバージョン / B1..B17 の PASS・FAIL 一覧 /
 失敗があれば内容と原因分類（設計・実装・環境）/ test-cases.md と phase1-validation.md の状態更新 /
 Phase 1 受入条件（要件定義書 12.2）との対応表。
+
+直近の実測基準値（Mac 2026-07-26）は次のとおり。回帰調査ではこの値と突き合わせる。
+
+| ゲート | 基準値 |
+|---|---|
+| `npm run test`（Vitest） | **55/55 PASS** |
+| `npm run verify:supabase` | **28/28 PASS** |
+| `npm run e2e:auth` | **17/17 PASS** |
+| `npm run e2e:local` | **24/24 PASS を 2 回連続** |
+
+ログ・報告に token / Cookie / Magic Link URL / anon key / service role key / `.env.local` の値を
+出さないこと（出してよいのは correlation ID まで）。
+retry 追加 / timeout 延長 / skip 追加 / 期待値の弱体化で PASS にしないこと。
 
 ## 実施環境の選択肢
 - **推奨**: Claude デスクトップアプリで新しい Cowork タスクを「On your computer」で開始し、

@@ -1,37 +1,40 @@
 # phase1-validation.md — Phase 1 検証実績（再構築版）
 
-実施日: 2026-07-24〜25 / 環境: クラウドサンドボックス（静的検証）＋ **Mac 実機（正式 verify・実 Supabase・E2E）**
+実施日: 2026-07-24〜26 / 環境: クラウドサンドボックス（静的検証）＋ **Mac 実機（正式 verify・実 Supabase・E2E）**
 
 > **レビュー承認（2026-07-24）**: Phase 1A DB 層は
 > 「PostgreSQL ハーネス上の静的・RLS・GRANT・状態遷移・監査・並行実行レビュー完了」として承認済み
 > （migration の SHA-256 一致・終了コード0・SEC-62..87 を含む全テスト PASS をレビュアーが実ファイルで確認）。
 > **これは Phase 1 全体の完了ではない。** 現時点の実績:
-> **正式 `npm run verify`（typecheck/lint/Vitest 41/41/build 全10ルート）は、本セッション追加ファイル
-> （scripts/verify-supabase.ts・e2e 拡張・signout middleware 修正）を含む最新コードで Mac PASS（2026-07-25）。**
+> **正式 `npm run verify`（typecheck/lint/Vitest 55/55/build 全10ルート）は、B13-HTTP 差分
+> （`src/lib/auth/audit.ts` の分類・`audit.test.ts`・e2e 拡張）を含む最新コードで Mac PASS（2026-07-26）。**
 > package-lock.json は 8add410 で完了。`next-env.d.ts`（自動生成）の triple-slash-reference lint は**内容変更せず**
 > eslint.config.mjs の global ignore で対応。Supabase local `start` / migration 適用 / seed 適用 / `db reset` /
 > Next.js `/login` 200 / Studio 307 / Mailpit 200 の **スモークは Mac で PASS**（§1.3）。
-> **実 Supabase 検証・完了（2026-07-25, Mac）**:
+> **実 Supabase 検証・完了（2026-07-26, Mac）**:
 > **`npm run verify:supabase` 28/28 全 PASS**（B1..B5 / B9 / B13-DB / B15: 実 PostgREST 経由の RLS・列 GRANT・
 > 実 JWT 3 ロール・業務 RPC 認可/監査・招待メール一致・失敗監査別 Tx・直接書込拒否）。
-> **`npm run e2e:local` 22/22 全 PASS を 2 回連続**（B6..B8 / B10(session) / B11(部分検証) / B12 / B14 / B16 / B17:
+> **`npm run e2e:local` 24/24 全 PASS を 2 回連続**（B6..B8 / B10(session) / B11(部分検証) / B12 / B13-HTTP / B14 / B16 / B17:
 > Magic Link 送信→Mailpit 受信→単回使用→再利用拒否→Cookie 属性（httpOnly=true 強制, U22）→
-> セッション維持→認証済み signout の全ライフサイクル ＋ 認証済みロール・状態別認可 14 件）。
-> **22 件の内訳は 既存 E2E 7 件 + auth setup 1 件 + 認証済み E2E 14 件**。
-> **`npm run e2e:auth` 15/15 全 PASS**（auth setup 1 + 認証済み 14）。
-> **`npm run verify`（typecheck/lint/Vitest 41/41/build）最新コードで PASS**。
-> **結論: Phase 1 の機能実装と主要実機検証は完了。** 既知の残課題（テスト PENDING）は次の 4 分類:
+> セッション維持→認証済み signout の全ライフサイクル ＋ 認証済みロール・状態別認可 14 件 ＋ 実 HTTP 失敗監査 2 件）。
+> **24 件の内訳は 既存 E2E 7 件 + auth setup 1 件 + 認証済み E2E 16 件（AUTH-E2E-12..27）**。
+> **`npm run e2e:auth` 17/17 全 PASS**（auth setup 1 + 認証済み 16）。
+> **`npm run verify`（typecheck/lint/Vitest 55/55/build）最新コードで PASS**。
+> **結論: Phase 1 の機能実装と主要実機検証は完了。** 既知の残課題（テスト PENDING）は次の 3 分類:
 > ① **B10-refresh**（middleware token refresh の強制検証・未実装）
-> ② **B13-HTTP**（Next.js 実 HTTP 失敗監査 E2E・未実装）
-> ③ **AUTH-11 実機**（/error 振り分けの実機確認）
-> ④ **Magic Link 有効期限の境界検証**（期限切れリンクの時間経過を伴う検証・未実施）。いずれも PASS 扱いにしない。
-> **旧④の AUTH-12..16（認証済みロール・状態別 E2E）は、実 Supabase local / 実 HTTP / 実 Cookie で
-> AUTH-E2E-12..25 の 14 件が PASS したため SUPABASE_LOCAL_PASS へ更新した**（§1.5 / test-cases.md §5.1・B17）。
+> ② **AUTH-11 実機**（/error 振り分けの実機確認）
+> ③ **Magic Link 有効期限の境界検証**（期限切れリンクの時間経過を伴う検証・未実施）。いずれも PASS 扱いにしない。
+> **AUTH-12..16（認証済みロール・状態別 E2E）は、実 Supabase local / 実 HTTP / 実 Cookie で
+> AUTH-E2E-12..25 の 14 件が PASS したため SUPABASE_LOCAL_PASS へ更新済み**（§1.5 / test-cases.md §5.1・B17）。
+> **B13-HTTP（Next.js 実 HTTP 失敗監査経路）も、AUTH-E2E-26/27 の 2 件が実ブラウザ・実 Cookie・
+> 実 Server Action・実 Supabase local で PASS したため SUPABASE_LOCAL_PASS へ更新し、PENDING から外した**
+> （§1.6 / test-cases.md §7 B13-HTTP）。
 > **CI リモート実走行も完了（2026-07-25）**: GitHub Actions Run #4 / commit `2bbae3b` で全ジョブ green
 > （Linux クリーン環境 Node v22.23.1 / npm 11.12.1 で `npm ci` PASS、typecheck / lint / unit / build PASS、
 > PostgreSQL harness `PG HARNESS: ALL TESTS PASSED`）。
-> **結論: Phase 1 の機能実装・主要実機検証・CI 実走行は完了。上記 4 分類は Phase 1 完了を妨げない
-> 追加検証バックログとして継続管理する（PASS 扱いにしない）。Phase 2 は未着手。**
+> **結論: Phase 1 の機能実装・主要実機検証・CI 実走行は完了。上記 3 分類は Phase 1 完了を妨げない
+> 追加検証バックログとして継続管理する（PASS 扱いにしない）。npm audit の high severity 12 件と
+> 実 Supabase 検証の CI 化は別枠バックログ。Phase 2 は未着手。**
 > 非ブロッキングの将来課題は assumptions.md U18..U22 に記録。
 
 ## 1. 実行済み検証
@@ -52,7 +55,8 @@
 - 実行コマンド: `PGHOST=/tmp PGPORT=5433 PGUSER=postgres bash scripts/pg-harness/run.sh`
 
 ### 1.2 アプリ純粋ロジック
-- unit test 41/41 PASS（`npm run test:offline`。**正式ランナー Vitest でも Mac で 41/41 PASS 済み**）。
+- unit test: **正式ランナー Vitest は Mac で 55/55 PASS**（2026-07-26。B13-HTTP の `src/lib/auth/audit.test.ts` 14 件を含む）。
+  `npm run test:offline` は 41/41 PASS のまま（対象ファイルを明示列挙する構成で、`vi.mock` 依存の `audit.test.ts` を含まないため。件数差はこの一点に起因し、矛盾ではない）。
 - 純粋モジュールの strict typecheck PASS（tsc, `tsconfig.pure.json`）。
 
 ### 1.3 Mac ローカルで確認済みの前提（スモーク・PASS）
@@ -131,7 +135,7 @@ Next.js `/login` 200 / Supabase Studio 307（`/project/default` へ）/ Mailpit 
        `{ ...options, httpOnly: true }`。assumptions.md U22 に記録。テスト側の期待は変更しない）。
        （当時この時点では E2E-06 は再実行待ち・B8 / B10(session) / B12 認証済み経路は未到達 — 最終結果は履歴 10 参照）
     10. httpOnly 強制後のラン（08:4x・当時の全件）: **`npm run verify` 全 PASS** ＋ **`npm run e2e:local` 7/7 全 PASS**
-        （当時は認証済み E2E 未実装。最終結果は §1.5 の 22/22 を 2 回連続）。
+        （当時は認証済み E2E 未実装。最終結果は 24/24 を 2 回連続 — §1.5 / §1.6）。
         E2E-06 が B6→B7→ログイン成立→B11（httpOnly=true / path=/ / sameSite=Lax / redirect 後存在）→
         B10 セッション維持→B8 再利用拒否→B12 認証済み signout（303・Cookie 消滅・/cases→/login）まで完走。
         **B6..B8 / B10(session) / B11(部分) / B12 / B14 / B16 = SUPABASE_LOCAL_PASS 確定。**
@@ -159,15 +163,15 @@ Next.js `/login` 200 / Supabase Studio 307（`/project/default` へ）/ Mailpit 
 - **未検証を PASS 扱いしない**:
   - **B10-refresh（middleware token refresh の強制）**: 期限切れ/間近トークンを強制する確実な手段が無いため
     **PENDING**。E2E は「セッション維持のみ」に格下げ済み。
-  - **B13-HTTP（Next.js 実 HTTP 失敗監査経路）**: **PENDING**。verify-supabase が確認するのは DB/PostgREST の
-    別 Tx 経路（B13-DB）まで。Server Action / route handler を通す E2E は未実装。
+  - **B13-HTTP（Next.js 実 HTTP 失敗監査経路）は 2026-07-26 に SUPABASE_LOCAL_PASS へ更新**（AUTH-E2E-26/27・§1.6）。
+    B13-DB が確認するのは DB/PostgREST 単体の別 Tx 経路までで、B13-HTTP は Server Action を通す実 HTTP 経路を確認する。
   - B11 は部分検証（secure と真の refresh は未）。
 - 本サンドボックスでの静的検証（本セッション実行済み）: `npm run typecheck:pure` PASS /
   `npm run test:offline` 41/41 PASS / 新規・変更 TS の隔離 tsc（ambient stub, strict）PASS / prettier 整形済み。
   さらに **Mac で正式 `npm run verify` が最新コードで PASS（§6）**。
-- **最終実行結果（Mac 2026-07-25）**: `npm run verify:supabase` **28/28 全 PASS**（B1..B5 / B9 / B13-DB / B15 =
-  SUPABASE_LOCAL_PASS）＋ `npm run e2e:local` **22/22 全 PASS を 2 回連続**（B6..B8 / B10(session) / B11(部分) /
-  B12 / B14 / B16 / B17 = SUPABASE_LOCAL_PASS）。対応表は test-cases.md §7（B1..B17）。
+- **最終実行結果（Mac 2026-07-26）**: `npm run verify:supabase` **28/28 全 PASS**（B1..B5 / B9 / B13-DB / B15 =
+  SUPABASE_LOCAL_PASS）＋ `npm run e2e:local` **24/24 全 PASS を 2 回連続**（B6..B8 / B10(session) / B11(部分) /
+  B12 / B13-HTTP / B14 / B16 / B17 = SUPABASE_LOCAL_PASS）。対応表は test-cases.md §7（B1..B17）。
 
 ### 1.5 認証済み E2E 基盤（AUTH-12..16 / B17）— 実装と実機検証（Mac 2026-07-25）
 
@@ -175,8 +179,8 @@ Next.js `/login` 200 / Supabase Studio 307（`/project/default` へ）/ Mailpit 
 ロール別認可 / 状態別拒否 / 他法人 ID 拒否のみを対象とする。Phase 2 の業務 E2E も同じ基盤を再利用する。
 
 **構造**: Playwright を 3 project に分割した。`e2e`（既存 7 件・storageState 不使用）→
-`auth-setup`（fixture 用意と storageState 生成・1 件）→ `authenticated`（AUTH-E2E-12..25 の 14 件・
-`dependencies: ["auth-setup"]`）。auth-setup は公開業務関数のみで 2 法人 8 ユーザーの fixture を冪等に用意し、
+`auth-setup`（fixture 用意と storageState 生成・1 件）→ `authenticated`（AUTH-E2E-12..27 の 16 件 =
+`authz.spec.ts` 14 件 + `audit-http.spec.ts` 2 件・`dependencies: ["auth-setup"]`）。auth-setup は公開業務関数のみで 2 法人 8 ユーザーの fixture を冪等に用意し、
 GoTrue Admin API `generateLink({type:'magiclink'})`（**メール送信なし**）で得た token_hash を
 **アプリの実 `/auth/callback` 経路**に通して実 Cookie を発行させ、`app/.auth/<key>.json` へ storageState を保存する。
 `app/.auth/` は `.gitignore` 済みで毎回作り直す（stale session を使い回さない）。
@@ -206,9 +210,9 @@ signout テストの削除では解決していない。** また **production �
 Magic Link 経路が `otp_disabled` になる。`supabase stop --project-id app` →
 正しいリポジトリから `supabase start` → `supabase db reset` で解消する。
 
-**実測結果（Mac 2026-07-25）**: `npm run typecheck` PASS / `npm run lint` PASS / `npm run test` PASS（Vitest 41/41）/
-`npm run build` PASS / `npm run verify:supabase` 28/28 PASS / `npm run e2e:auth` **15/15 PASS**（auth setup 1 + 14）/
-`npm run e2e:local` **22/22 PASS を 2 回連続**（既存 7 + auth setup 1 + 認証済み 14）。
+**実測結果（Mac 2026-07-26）**: `npm run typecheck` PASS / `npm run lint` PASS / `npm run test` PASS（Vitest **55/55**）/
+`npm run build` PASS / `npm run verify:supabase` **28/28 PASS** / `npm run e2e:auth` **17/17 PASS**（auth setup 1 + 16）/
+`npm run e2e:local` **24/24 PASS を 2 回連続**（既存 7 + auth setup 1 + 認証済み 16）。
 2 回連続で確認した事項: auth setup が毎回 storageState を再生成すること / SYSTEM_ADMIN セッションが
 signout テストに巻き込まれないこと / AUTH-E2E-14 / 17 が安定 PASS すること / 既存 AUTH-E2E-01..07 に退行が無いこと /
 法人・membership fixture が冪等であること / 他法人 ID 差し替えの拒否が実 HTTP で成立すること /
@@ -219,31 +223,79 @@ ORGANIZATION_ADMIN と SALES_USER の**管理操作差分は HTTP 層では未�
 両者の DB 層のロール差分は既存の PG harness（業務関数テスト）で検証済みであり、
 **HTTP 層で検証できるロール境界は SYSTEM_ADMIN 境界のみ**。この制約は解消されていない。
 
-**範囲外（PENDING のまま）**: AUTH-E2E-25 の末尾に出力される
-`[audit] failure-audit write failed correlation=...` は **B13-HTTP（Next.js 実 HTTP 失敗監査経路）の既知ログ**であり、
-**AUTH-12..16 の FAIL ではない**。B13-HTTP は今回の対象外で PENDING を維持する。
+**AUTH-E2E-25 の位置づけ**: AUTH-E2E-25 は「他法人 membership ID への書換えが拒否されること・双方の状態が
+不変であること・文脈が切り替わらないこと」のみを主張する。失敗監査の記録内容そのものは **AUTH-E2E-26 / 27**
+（B13-HTTP・§1.6）が担当する。旧記述にあった「AUTH-E2E-25 の末尾に出る `failure-audit write failed` は
+B13-HTTP の既知ログ」という注記は、**B13-HTTP の実装により解消したため削除した**（実測 2026-07-26 では
+AUTH-E2E-25 / 27 とも `failure-audit refused by actor/membership guard` の warn のみで、
+`failure-audit write failed` は出力されない）。
+
+### 1.6 B13-HTTP（実 HTTP 失敗監査経路）— 実装と実機検証（Mac 2026-07-26）
+
+**目的**: 失敗監査が **Next.js Server Action を通した実 HTTP 経路**でも、別 PostgREST リクエスト /
+別トランザクションで正しく 1 件記録されることを確認する。B13-DB との違いは次のとおり。
+
+- **B13-DB** — `verify-supabase` の B13a/b/c による **RPC / PostgREST 単体検証**。service_role で
+  `app_record_membership_accept_failure` を直接叩き、別 Tx 記録・correlation 冪等性・SEC-83/86 のガードを確認する。
+  **アプリの HTTP 経路は通らない。**
+- **B13-HTTP** — **実ブラウザ・実 Cookie・実 Server Action・実 Supabase local** を通した検証（AUTH-E2E-26/27）。
+
+**確認した性質（実測）**:
+- 正当な業務失敗が **別 PostgREST リクエスト / 別トランザクション**で `success=false` の失敗監査 **1 件**として記録される。
+- actor は**認証済み session の `getUser()` 由来**であり、**request body の actor ID は信用しない**。
+- membership ID は request body 由来でも、**SEC-83 が membership 本人との一致を検証**して不一致を拒否する。
+- correlation ID は **1 リクエスト 1 個**。業務失敗と監査で同一 correlation を共有し、**同一 correlation を再送しても 1 件のまま**。
+- **service_role の用途は監査 RPC の実行に限定**。**監査ログの読取は SYSTEM_ADMIN の認証済み session + RLS 経由**で行う。
+  migration 0001 が `authoritative_audit_logs` の権限を revoke しているため **service_role にはこのテーブルの
+  SELECT 権限が無く**、**BYPASSRLS はテーブル GRANT を代替しない**。
+- **migration / RLS / GRANT / RPC 定義は一切変更していない。**
+
+**テストの役割分担（混同しない）**:
+- **AUTH-E2E-25** — 他法人 membership ID への書換え拒否・状態不変・文脈非切替。
+- **AUTH-E2E-26** — 正当な業務失敗が実 HTTP 経路で **失敗監査 1 件**として記録されること。
+- **AUTH-E2E-27** — actor と membership 本人が不一致の**偽造失敗監査**を SEC-83 が拒否し、**監査行 0 件**であること。
+
+**失敗監査ログの 3 分類（ガード拒否と書込み失敗を混同しない）**:
+- `recorded` — 失敗監査が 1 件書かれた（AUTH-E2E-26）。
+- `refused_by_guard` — `failure-audit refused by actor/membership guard` の **warn**。設計どおりの拒否であって
+  監査経路の障害ではない。監査行は書かれず、出力は correlation ID のみ（AUTH-E2E-25 / 27）。
+- `write_failed` — `failure-audit write failed`。**本物の監査経路障害**。判別できない error shape は安全側に倒して
+  `write_failed` として扱う。
+
+**実測（Mac 2026-07-26）**: Vitest **55/55 PASS** / `npm run build` PASS / `npm run verify:supabase` **28/28 PASS** /
+`npm run e2e:auth` **17/17 PASS** / `npm run e2e:local` **24/24 PASS を 2 回連続**。
+AUTH-E2E-26 は PASS し `failure-audit write failed` は出力されず、正当な失敗監査が 1 件記録された。
+AUTH-E2E-25 / 27 では `failure-audit refused by actor/membership guard` の warn が出力され、監査行は書かれなかった。
+既存 AUTH-E2E-01..25 に退行は無い。
+
+**セキュリティ姿勢**: actor ID を request body から信用しない / service role key を browser へ渡さない /
+token・Cookie・Magic Link URL・anon key・service role key・DB 生エラー全文をログへ出さない（出すのは correlation ID のみ）/
+fixture はすべて `@example.test` / RLS・GRANT・認可を弱めていない / production の signOut scope は不変 /
+timeout 延長・retry 追加・skip 追加・期待値の弱体化は行っていない。
 
 ## 2. 残る未検証（PENDING）と理由
 
 かつて本節に列挙していた実 Supabase 検証（PostgREST 経由 RLS・列 GRANT・RPC・実 JWT 3 ロール・招待メール一致・
 失敗監査別 Tx・Magic Link/Mailpit/再利用拒否/Cookie/signout のブラウザ E2E）は、**すべて Mac で実施済み・PASS**
-（§1.4: verify:supabase 28/28 ＋ e2e:local 22/22 を 2 回連続）。
-**AUTH-12..16 の認証済みロール・状態別 E2E は §1.5 の基盤により SUPABASE_LOCAL_PASS へ更新済み**（旧④）。
-**残る既知の残課題（テスト PENDING）は以下の 4 分類**:
+（§1.4: verify:supabase 28/28 ＋ e2e:local 24/24 を 2 回連続）。
+**AUTH-12..16 の認証済みロール・状態別 E2E は §1.5 の基盤により SUPABASE_LOCAL_PASS へ更新済み。**
+**B13-HTTP（実 HTTP 失敗監査経路）も §1.6 の AUTH-E2E-26/27 により SUPABASE_LOCAL_PASS へ更新済み。**
+**残る既知の残課題（テスト PENDING）は以下の 3 分類**:
 
 | # | 項目 | 内容 | 理由 / PASS 済みの範囲 |
 |---|---|---|---|
 | 1 | **B10-refresh** | 期限切れ/間近トークンを強制して middleware の token refresh を実機検証 | 確実な強制手段が未実装。E2E はセッション維持のみ確認（PASS 済み） |
-| 2 | **B13-HTTP** | Next.js Server Action / route handler を通した実 HTTP 失敗監査 E2E | 未実装（DB/PostgREST 別 Tx 経路 B13-DB は PASS 済み） |
-| 3 | **AUTH-11 実機** | DB/RLS 障害を「所属なし」と区別し /error へ振り分ける経路の実機確認 | 障害注入手段が未整備（判定ロジックは実装・unit 済み） |
-| 4 | **Magic Link 有効期限の境界検証** | 期限切れリンクの時間経過を伴う検証 | 未実施（時間経過の強制手段が未整備。単回使用・使用済みリンクの再利用拒否は B8 で PASS 済み） |
+| 2 | **AUTH-11 実機** | DB/RLS 障害を「所属なし」と区別し /error へ振り分ける経路の実機確認 | 障害注入手段が未整備（判定ロジックは実装・unit 済み） |
+| 3 | **Magic Link 有効期限の境界検証** | 期限切れリンクの時間経過を伴う検証 | 未実施（時間経過の強制手段が未整備。単回使用・使用済みリンクの再利用拒否は B8 で PASS 済み） |
 
-**旧 ④「AUTH-12..16 の認証済みロール・状態別 E2E」は SUPABASE_LOCAL_PASS へ更新済み**
+**「AUTH-12..16 の認証済みロール・状態別 E2E」は SUPABASE_LOCAL_PASS へ更新済み**
 （AUTH-E2E-12..25 の 14 件を実 Supabase local / 実 HTTP / 実 Cookie で確認。§1.5 / test-cases.md §5.1・B17）。
-なお **npm audit の high severity 12 件**は、テストの PENDING とは別枠のセキュリティ負債として管理する。
+**「B13-HTTP」も SUPABASE_LOCAL_PASS へ更新済み**（AUTH-E2E-26/27 の 2 件。§1.6 / test-cases.md §7 B13-HTTP）。
+なお **npm audit の high severity 12 件** と **実 Supabase local 検証（verify:supabase / e2e:local）の CI 化** は、
+テストの PENDING とは別枠のバックログとして管理する。
 
 上記とは別枠だった **CI リモート実走行（GitHub Actions での npm ci + verify + pg-harness）は 2026-07-25 に完了**
-（Run #4 / commit `2bbae3b`・全ジョブ green）。上記 4 分類は Phase 1 完了を妨げない追加検証バックログとして
+（Run #4 / commit `2bbae3b`・全ジョブ green）。上記 3 分類は Phase 1 完了を妨げない追加検証バックログとして
 継続管理し、**PASS 扱いにしない**。
 
 ### 2.2 本クラウドサンドボックス固有の制約（記録）
@@ -262,14 +314,15 @@ ORGANIZATION_ADMIN と SALES_USER の**管理操作差分は HTTP 層では未�
 |---|---|
 | Phase 0 コード | 再構築済み（成果物レビュー中） |
 | pure typecheck | 実行済み PASS（tsc 6.0.3・本環境） |
-| offline unit (41件) | 実行済み PASS（`npm run test:offline`・本環境） |
-| 正式 `npm run verify`（typecheck/lint/Vitest/build） | **APP_PASS（最新コード）**（Mac 2026-07-25。追加スクリプト・e2e・middleware 修正込みで typecheck/lint/Vitest 41/41/build 全10ルート成功） |
+| offline unit (41件) | 実行済み PASS（`npm run test:offline`・本環境。明示ファイル列挙のため `audit.test.ts` を含まない。Vitest 正式は 55/55） |
+| 正式 `npm run verify`（typecheck/lint/Vitest/build） | **APP_PASS（最新コード）**（Mac 2026-07-26。B13-HTTP 差分込みで typecheck/lint/Vitest **55/55**/build 全10ルート成功） |
 | CI | **実走行 PASS**（GitHub Actions Run #4 / commit `2bbae3b`・全ジョブ green。Node v22.23.1 / npm 11.12.1 で `npm ci` → typecheck / lint / unit / build、PostgreSQL harness `PG HARNESS: ALL TESTS PASSED`） |
 | package-lock.json 生成 | **完了**（8add410。2026-07-25 に version 欠落 optional スタブを `2bbae3b` で修復し、Linux クリーン環境の `npm ci` 成立を CI で確認） |
-| 実 Supabase local: verify:supabase (B1..B5/B9/B13-DB/B15) | **SUPABASE_LOCAL_PASS**（Mac 2026-07-25, 28/28 PASS, run=mrzjqtj7） |
-| 実 Supabase local: E2E 全体 (B6..B8/B10(session)/B11/B12/B14/B16/B17) | **SUPABASE_LOCAL_PASS**（Mac 2026-07-25, **22/22 PASS を 2 回連続**。内訳: 既存 E2E 7 + auth setup 1 + 認証済み E2E 14） |
-| 実 Supabase local: 認証済み E2E (B17 / AUTH-E2E-12..25) | **SUPABASE_LOCAL_PASS**（Mac 2026-07-25, **14/14 PASS**。`npm run e2e:auth` は auth setup 1 件を含めて 15/15） |
-| B10-refresh / B13-HTTP / AUTH-11 実機 / Magic Link 有効期限の境界検証 | **PENDING**（未実装・未検証。**既知の残課題 4 分類として明示** — §2） |
+| 実 Supabase local: verify:supabase (B1..B5/B9/B13-DB/B15) | **SUPABASE_LOCAL_PASS**（Mac 2026-07-26, 28/28 PASS） |
+| 実 Supabase local: E2E 全体 (B6..B8/B10(session)/B11/B12/B13-HTTP/B14/B16/B17) | **SUPABASE_LOCAL_PASS**（Mac 2026-07-26, **24/24 PASS を 2 回連続**。内訳: 既存 E2E 7 + auth setup 1 + 認証済み E2E 16） |
+| 実 Supabase local: 認証済み E2E (B17 / AUTH-E2E-12..27) | **SUPABASE_LOCAL_PASS**（Mac 2026-07-26, **16/16 PASS**。`npm run e2e:auth` は auth setup 1 件を含めて 17/17） |
+| 実 Supabase local: 実 HTTP 失敗監査 (B13-HTTP / AUTH-E2E-26/27) | **SUPABASE_LOCAL_PASS**（Mac 2026-07-26, **2/2 PASS**。実ブラウザ・実 Cookie・実 Server Action 経由。§1.6） |
+| B10-refresh / AUTH-11 実機 / Magic Link 有効期限の境界検証 | **PENDING**（未実装・未検証。**既知の残課題 3 分類として明示** — §2） |
 
 ## 4. Phase 1 受入条件との対応（12.2）
 | 受入条件 | 状態 |
@@ -281,15 +334,17 @@ ORGANIZATION_ADMIN と SALES_USER の**管理操作差分は HTTP 層では未�
 | profile email/system_role 直接更新不可 | PG_HARNESS_PASS + **SUPABASE_LOCAL_PASS**（B3, PostgREST 経由） |
 | 法人・membership 直接書込不可（業務関数のみ） | PG_HARNESS_PASS + **SUPABASE_LOCAL_PASS**（B15） |
 | 最後の SYSTEM_ADMIN / ORGANIZATION_ADMIN の並行 0 人化不可 | PG_HARNESS_PASS (CONC-01/02) |
-| 成功監査同一Tx / 失敗監査別Tx | PG_HARNESS_PASS (FUNC-02/15) + **DB/PostgREST 経路 SUPABASE_LOCAL_PASS**（B5/B13-DB）/ Next.js HTTP 経路（B13-HTTP）**PENDING** |
+| 成功監査同一Tx / 失敗監査別Tx | PG_HARNESS_PASS (FUNC-02/15) + **DB/PostgREST 経路 SUPABASE_LOCAL_PASS**（B5/B13-DB）+ **Next.js 実 HTTP 経路 SUPABASE_LOCAL_PASS**（B13-HTTP / AUTH-E2E-26/27。§1.6） |
 | middleware refresh 後 Cookie が redirect でも維持 | Cookie 属性・redirect 後維持・セッション維持は **SUPABASE_LOCAL_PASS**（B10/B11）/ **token refresh の強制（B10-refresh）は PENDING** |
-| 全 typecheck/lint/unit/build/E2E + AUTH/SEC | **typecheck・lint・unit（Vitest 41/41）・build・DB系・verify:supabase 28/28・e2e:local 22/22（2 回連続）・e2e:auth 15/15 すべて PASS** |
+| 全 typecheck/lint/unit/build/E2E + AUTH/SEC | **typecheck・lint・unit（Vitest 55/55）・build・DB系・verify:supabase 28/28・e2e:local 24/24（2 回連続）・e2e:auth 17/17 すべて PASS** |
 
 **結論: Phase 1 の機能実装と主要実機検証は完了。**
-**AUTH-12..16 の認証済みロール・状態別 E2E は SUPABASE_LOCAL_PASS**（AUTH-E2E-12..25 の 14 件。
-`npm run e2e:auth` 15/15 ＝ auth setup 1 + 業務テスト 14、`npm run e2e:local` 22/22 を 2 回連続。§1.5）。
-**B10-refresh・B13-HTTP・AUTH-11 実機・Magic Link 有効期限の境界検証は既知の残課題**として明示
-（未実装・未検証であり PASS 扱いにしない。§2 参照）。npm audit の high severity 12 件は別枠で管理する。
+**AUTH-12..16 の認証済みロール・状態別 E2E は SUPABASE_LOCAL_PASS**（AUTH-E2E-12..25 の 14 件）。
+**B13-HTTP の実 HTTP 失敗監査経路も SUPABASE_LOCAL_PASS**（AUTH-E2E-26/27 の 2 件。§1.6）。
+`npm run e2e:auth` 17/17 ＝ auth setup 1 + 業務テスト 16、`npm run e2e:local` 24/24 を 2 回連続（§1.5 / §1.6）。
+**B10-refresh・AUTH-11 実機・Magic Link 有効期限の境界検証は既知の残課題**として明示
+（未実装・未検証であり PASS 扱いにしない。§2 参照）。npm audit の high severity 12 件と
+実 Supabase 検証の CI 化は別枠で管理する。
 **CI リモート実走行も完了**（GitHub Actions Run #4 / commit `2bbae3b`・全ジョブ green）。
-**Phase 1 の機能実装・主要実機検証・CI 実走行は完了。既知残課題 4 分類は Phase 1 完了を妨げない
+**Phase 1 の機能実装・主要実機検証・CI 実走行は完了。既知残課題 3 分類は Phase 1 完了を妨げない
 追加検証バックログとして継続管理する。Phase 2 は未着手。**

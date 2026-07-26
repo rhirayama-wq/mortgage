@@ -6,25 +6,31 @@
 
 **開発ルールの最上位は `CLAUDE.md`。作業開始時は必ず CLAUDE.md → README → /docs の順に読むこと。**
 
-## 現在地（2026-07-25）
+## 現在地（2026-07-26）
 - **Phase 1 の機能実装・主要実機検証・CI 実走行は完了**（Phase 1 クローズ）。
-- Mac 実機: `npm run verify`（typecheck / lint / Vitest 41/41 / production build）PASS、
-  `npm run verify:supabase` 28/28 PASS、`npm run e2e:local` **22/22 PASS を 2 回連続**、
-  `npm run e2e:auth` **15/15 PASS**。
+- Mac 実機: `npm run verify`（typecheck / lint / Vitest **55/55** / production build）PASS、
+  `npm run verify:supabase` **28/28 PASS**、`npm run e2e:local` **24/24 PASS を 2 回連続**、
+  `npm run e2e:auth` **17/17 PASS**。
 - **認証済み E2E 基盤（AUTH-12..16）は実装・実機検証済み**: Playwright の `auth-setup` project が
-  架空 fixture の storageState を生成し、`e2e/authenticated/authz.spec.ts` の 14 件（AUTH-E2E-12..25）が
+  架空 fixture の storageState を生成し、認証済み E2E **16 件（AUTH-E2E-12..27）**が
   実 HTTP・実 Cookie でロール別認可 / invited・suspended・left 拒否 / 他法人 ID 拒否 /
-  SYSTEM_ADMIN 境界を検証する。**AUTH-12..16 は SUPABASE_LOCAL_PASS** → docs/test-cases.md §5.1。
+  SYSTEM_ADMIN 境界を検証する（`authenticated/authz.spec.ts` 14 件 + `authenticated/audit-http.spec.ts` 2 件）。
+  **AUTH-12..16 は SUPABASE_LOCAL_PASS** → docs/test-cases.md §5.1。
   storageState と fixture 定義は **Phase 2 の業務 E2E でもそのまま再利用できる**。
+- **B13-HTTP（実 HTTP 失敗監査経路）も実機検証済み → SUPABASE_LOCAL_PASS**: AUTH-E2E-26/27 が
+  実ブラウザ・実 Cookie・実 Server Action・実 Supabase local を通し、正当な業務失敗が
+  **別 PostgREST リクエスト / 別トランザクション**で `success=false` の失敗監査 1 件として記録されること、
+  actor と membership が不一致の偽造失敗監査は SEC-83 が拒否し監査行 0 件になることを検証する
+  → docs/test-cases.md §5.1 / §7 B13-HTTP。
 - GitHub Actions（commit `2bbae3b` / Run #4・全ジョブ green）: Node v22.23.1 / npm 11.12.1 で
   `npm ci` PASS、typecheck / lint / unit / build PASS、PostgreSQL harness は
   `FUNCTIONAL TESTS: ALL PASSED` / `SECURITY TESTS: ALL PASSED` / `PG HARNESS: ALL TESTS PASSED`。
 - package-lock.json は npm **11.12.1** 固定でコミット済み。Linux クリーン環境での `npm ci` も CI で成立。
 - DB 層: migration v6 相当を PGハーネス（PostgreSQL 16.13）で検証済み。
   実 Supabase local（PostgREST / GoTrue / Mailpit）でも検証済み → docs/phase1-validation.md。
-- **既知残課題 4 分類（B10-refresh / B13-HTTP / AUTH-11 実機 / Magic Link 有効期限の境界検証）は
+- **既知残課題 3 分類（B10-refresh / AUTH-11 実機 / Magic Link 有効期限の境界検証）は
   PENDING のまま**、Phase 1 完了を妨げない追加検証バックログとして継続管理 → docs/phase1-validation.md §2。
-  （旧④の AUTH-12..16 は上記のとおり PASS へ更新済み。）
+  （AUTH-12..16 と B13-HTTP は上記のとおり PASS へ更新済み。）
 - **Phase 2 は未着手**（着手しない）。
 
 ## 構成
@@ -40,7 +46,8 @@ app/                 Next.js 15 (App Router, TS strict)
     auth.spec.ts     未認証・Magic Link ライフサイクル・signout 契約（既存 7 件）
     setup/           auth-setup project（fixture 用意 + storageState 生成・1 件）
     fixtures/        fixture 定義 / .env.local 読込 / manifest / ロール別 page fixture
-    authenticated/   認証済みロール・状態別認可（AUTH-E2E-12..25 の 14 件）
+    authenticated/   authz.spec.ts: ロール・状態別認可（AUTH-E2E-12..25 の 14 件）
+                     audit-http.spec.ts: 実 HTTP 失敗監査（AUTH-E2E-26/27 の 2 件・B13-HTTP）
   supabase/          migrations/0001_phase1_identity_org_rls.sql, seed.sql
 docs/                設計文書（assumptions が未確定事項の正）
 scripts/pg-harness/  PostgreSQL 単体での DB 検証ハーネス
@@ -51,9 +58,9 @@ scripts/pg-harness/  PostgreSQL 単体での DB 検証ハーネス
 cd app
 npm ci                      # lockfile 固定インストール（Node 22 系 / npm 11 系）
 npm run verify              # typecheck + lint + Vitest + production build
-npm run verify:supabase     # 実 Supabase local 検証（B1..B5 / B9 / B13-DB / B15）
-npm run e2e:local           # Playwright E2E 全体 22 件（既存 7 + auth setup 1 + 認証済み 14）
-npm run e2e:auth            # 認証済み認可テストのみ 15 件（auth-setup に依存し自動実行）
+npm run verify:supabase     # 実 Supabase local 検証（B1..B5 / B9 / B13-DB / B15）。B13-HTTP は e2e 側
+npm run e2e:local           # Playwright E2E 全体 24 件（既存 7 + auth setup 1 + 認証済み 16）
+npm run e2e:auth            # 認証済み E2E のみ 17 件（auth-setup に依存し自動実行）
 ```
 `npm run verify:supabase` と `npm run e2e:local` の前提:
 **Docker Desktop 起動済み / Supabase local 稼働中 / `.env.local` 設定済み /
@@ -82,11 +89,13 @@ cd app && npm run verify:supabase && npm run e2e:local
 ```
 
 ## 将来課題（Phase 1 完了を妨げないバックログ）
+（**B13-HTTP は 2026-07-26 に AUTH-E2E-26/27 として実装・実機検証し SUPABASE_LOCAL_PASS へ更新したため、本リストから外した。**）
+
 - **B10-refresh**: middleware token refresh の強制検証（期限切れ／間近トークンの強制手段が未整備）。
-- **B13-HTTP**: Next.js Server Action / route handler 経由の実 HTTP 失敗監査 E2E。
 - **AUTH-11 実機**: DB/RLS 障害を「所属なし」と区別し `/error` へ振り分ける経路の実機確認。
 - **Magic Link 有効期限の境界検証**: 期限切れリンクの時間経過を伴う検証（単回使用・再利用拒否は PASS 済み）。
 - **npm audit の high severity 12 件**（上記テスト PENDING とは別枠で管理）。
+- **実 Supabase local 検証（verify:supabase / e2e:local）の CI 化**（現状は Mac 実機のみ）。
 
 詳細は docs/phase1-validation.md §2。
 
