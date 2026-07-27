@@ -22,9 +22,17 @@
   **別 PostgREST リクエスト / 別トランザクション**で `success=false` の失敗監査 1 件として記録されること、
   actor と membership が不一致の偽造失敗監査は SEC-83 が拒否し監査行 0 件になることを検証する
   → docs/test-cases.md §5.1 / §7 B13-HTTP。
-- GitHub Actions（commit `2bbae3b` / Run #4・全ジョブ green）: Node v22.23.1 / npm 11.12.1 で
-  `npm ci` PASS、typecheck / lint / unit / build PASS、PostgreSQL harness は
-  `FUNCTIONAL TESTS: ALL PASSED` / `SECURITY TESTS: ALL PASSED` / `PG HARNESS: ALL TESTS PASSED`。
+- **CI は 2 本立てで、いずれも実走行済み**。
+  - 既存 CI（`.github/workflows/ci.yml`・高速 quality gate: typecheck / lint / unit / build /
+    PostgreSQL harness）: **Run #10 / run ID `30205025559` / commit `21bf31b`・success**。
+    初回の実走行確認は Run #4 / commit `2bbae3b`（2026-07-25・Node v22.23.1 / npm 11.12.1 で `npm ci` PASS、
+    PostgreSQL harness `PG HARNESS: ALL TESTS PASSED`）。
+  - **実 Supabase local 検証の CI 化も完了**（`.github/workflows/supabase-local-e2e.yml` /
+    workflow 名 `Supabase local E2E` / 追加 commit `21bf31b`）: **Run #1 / run ID `30205025523`・success**。
+    Supabase CLI **2.109.1** で `supabase start` → `supabase db reset` → `npm run verify:supabase` **28/28 PASS** →
+    `npm run e2e:local` **24/24 PASS**（1 worker・E2E 実行 1.1 分）。job 4 分 47 秒 / run 全体 5 分 11 秒。
+    接続先は loopback のみで、Supabase の鍵をリポジトリ Secrets に置かない
+    → docs/security.md §7.2 / docs/test-cases.md §7.1。
 - package-lock.json は npm **11.12.1** 固定でコミット済み。Linux クリーン環境での `npm ci` も CI で成立。
 - DB 層: migration v6 相当を PGハーネス（PostgreSQL 16.13）で検証済み。
   実 Supabase local（PostgREST / GoTrue / Mailpit）でも検証済み → docs/phase1-validation.md。
@@ -66,6 +74,10 @@ npm run e2e:auth            # 認証済み E2E のみ 17 件（auth-setup に依
 **Docker Desktop 起動済み / Supabase local 稼働中 / `.env.local` 設定済み /
 fixture は `@example.test` の架空データのみ**（実在データ禁止・CLAUDE.md §23）。
 
+この 2 コマンドは **CI（`.github/workflows/supabase-local-e2e.yml`）でも実行される**。
+`npm run e2e:auth`（17 件）は `npm run e2e:local`（24 件）の**真部分集合**なので
+**CI では重複実行しない**。Mac では従来どおり独立ゲートとして実行できる。
+
 補助コマンド:
 ```bash
 cp .env.example .env.local  # supabase start の出力値を設定（build にも必要）
@@ -87,6 +99,9 @@ supabase db reset     # migrations + seed 適用
 # Mailpit: http://127.0.0.1:54324 で Magic Link を受信
 cd app && npm run verify:supabase && npm run e2e:local
 ```
+同じ検証は CI でも実行される（`Supabase local E2E` workflow）。GitHub-hosted runner の Docker daemon を
+直接利用し（Docker-in-Docker 構成ではない）、接続先は loopback のみで、
+Supabase の鍵をリポジトリ Secrets に置かない。
 
 ## 将来課題（Phase 1 完了を妨げないバックログ）
 （**B13-HTTP は 2026-07-26 に AUTH-E2E-26/27 として実装・実機検証し SUPABASE_LOCAL_PASS へ更新したため、本リストから外した。**）
@@ -95,7 +110,6 @@ cd app && npm run verify:supabase && npm run e2e:local
 - **AUTH-11 実機**: DB/RLS 障害を「所属なし」と区別し `/error` へ振り分ける経路の実機確認。
 - **Magic Link 有効期限の境界検証**: 期限切れリンクの時間経過を伴う検証（単回使用・再利用拒否は PASS 済み）。
 - **npm audit の high severity 12 件**（上記テスト PENDING とは別枠で管理）。
-- **実 Supabase local 検証（verify:supabase / e2e:local）の CI 化**（現状は Mac 実機のみ）。
 
 詳細は docs/phase1-validation.md §2。
 

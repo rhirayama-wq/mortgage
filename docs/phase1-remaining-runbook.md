@@ -1,6 +1,8 @@
 # Phase 1 検証ランブック（完了済み検証の再実行・回帰調査用 / npm + Docker 利用可能環境で実施）
 
-**状態（2026-07-26）: 本書の A・B は Mac 実機で完了済み。CI 実走行（Run #4 / commit `2bbae3b`）も全ジョブ green。**
+**状態（2026-07-26）: 本書の A・B は Mac 実機で完了済み。CI 実走行も完了。**
+**A 相当（typecheck / lint / unit / build / PostgreSQL harness）は既存 workflow の Run #10 / run ID `30205025559` / head commit `21bf31b`・success（初回確認は Run #4 / commit `2bbae3b`・全ジョブ green）。**
+**B 相当（実 Supabase local の verify:supabase / e2e:local）は workflow `Supabase local E2E` の Run #1 / run ID `30205025523`・success。**
 **本書は新規の残作業リストではない。** 完了済み検証の再実行手順、および回帰が疑われるときの
 調査 runbook として維持する。各項目の現在の状態は test-cases.md §7（B1..B17）と
 phase1-validation.md §1.4〜§1.6 を正とし、本書は手順のみを持つ。
@@ -17,8 +19,7 @@ phase1-validation.md §1.4〜§1.6 を正とし、本書は手順のみを持つ
 2. **AUTH-11 実機**
 3. **Magic Link 有効期限の境界検証**
 
-別枠のバックログ: npm audit high severity 12 件 /
-実 Supabase local 検証（verify:supabase・e2e:local）の CI 化 / Phase 2。
+別枠のバックログ: npm audit high severity 12 件 / Phase 2。
 
 **Phase 2 へは進まない。**
 **本番 Supabase へは接続しない。ローカルスタックのみ使用する。**
@@ -58,7 +59,7 @@ npm run verify               # typecheck + eslint + vitest + production build
    `audit.test.ts`（14 件）を含まないため。差 14 件はこの一点に起因する。
 4. `npm run build`（production build）成功
    - build には `.env.local` が必要: `cp .env.example .env.local`（値は B の supabase start 出力で置換）
-5. CI（GitHub Actions）で Linux クリーン環境の `npm ci` が成立すること → **Run #4 / `2bbae3b` で確認済み**
+5. CI（GitHub Actions）で Linux クリーン環境の `npm ci` が成立すること → **Run #10 / run ID `30205025559` / `21bf31b`・success で確認済み**（初回確認は Run #4 / `2bbae3b`）
 > 依存解決で型エラー等が出た場合はバージョン調整が必要になり得る（package.json はレジストリ遮断環境で
 > 未解決のまま宣言されているため）。修正した場合は変更点を記録すること。
 
@@ -128,6 +129,13 @@ Phase 1 受入条件（要件定義書 12.2）との対応表。
 | `npm run e2e:auth` | **17/17 PASS** |
 | `npm run e2e:local` | **24/24 PASS を 2 回連続** |
 
+同じ B 相当の検証は CI（GitHub Actions workflow `Supabase local E2E`）でも成立している。
+Run #1 / run ID `30205025523`・success、Supabase CLI **2.109.1**、`npm run verify:supabase` **28/28 PASS**、
+`npm run e2e:local` **24/24 PASS**（`Running 24 tests using 1 worker` / 実行時間 1.1 分）。
+失敗監査ログは `failure-audit refused by actor/membership guard` **2 件** / `failure-audit write failed` **0 件**。
+job 4 分 47 秒 / run 全体 5 分 11 秒、artifact **0 件**。
+CI では `npm run e2e:auth` を実行しない（`e2e:local` の真部分集合であり二重実行になるため）。Mac 実機では独立ゲートとして継続する。
+
 ログ・報告に token / Cookie / Magic Link URL / anon key / service role key / `.env.local` の値を
 出さないこと（出してよいのは correlation ID まで）。
 retry 追加 / timeout 延長 / skip 追加 / 期待値の弱体化で PASS にしないこと。
@@ -136,4 +144,7 @@ retry 追加 / timeout 延長 / skip 追加 / 期待値の弱体化で PASS に�
 - **推奨**: Claude デスクトップアプリで新しい Cowork タスクを「On your computer」で開始し、
   このリポジトリのフォルダを対象にする（npm・Docker はローカル環境のものを使用）。
 - 手動: リポジトリ zip / git bundle を Mac に展開し、上記コマンドを自分で実行して結果を共有する。
-- CI: GitHub へ push し、A は既存 workflow、B は DinD workflow を追加して実行する。
+- CI: GitHub へ push すれば自動実行される。A 相当は既存 workflow `.github/workflows/ci.yml`、
+  B 相当は `.github/workflows/supabase-local-e2e.yml`（workflow 名 `Supabase local E2E`）が担う。
+  後者は GitHub-hosted runner に既定で用意されている Docker daemon を直接利用しており、
+  Docker-in-Docker 構成ではない。接続先はループバックのみで、Supabase の鍵をリポジトリ Secrets に置かない。
