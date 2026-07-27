@@ -62,6 +62,13 @@ jobs:
           PGPASSWORD: postgres
         run: bash scripts/pg-harness/run.sh
 
-  # NOTE: 実Supabase（supabase start / PostgREST / GoTrue / Mailpit）検証は
-  # Docker-in-Docker 構成の別 workflow として Phase 1 完了までに追加する。
-  # 本番 Supabase へは接続しない。
+  # NOTE: 実 Supabase（supabase start / PostgREST / GoTrue / Mailpit）検証は、
+  # 別 workflow `.github/workflows/supabase-local-e2e.yml` として追加済み。
+  # GitHub-hosted runner に既定で用意されている Docker daemon をそのまま利用し
+  # （Docker-in-Docker 構成ではない）、`supabase start` / `supabase db reset` の後に
+  # `npm run verify:supabase` と `npm run e2e:local` を実行する。
+  # 本番 Supabase へは接続しない。接続先は loopback（127.0.0.1 / localhost / [::1]）のみで、
+  # Supabase の鍵をリポジトリ Secrets に置かない（参照するのは CLI 取得用に
+  # 自動発行される GITHUB_TOKEN のみ）。
+  # 本 workflow（typecheck / lint / unit / build / PostgreSQL harness）は
+  # 高速 quality gate として据え置く。
