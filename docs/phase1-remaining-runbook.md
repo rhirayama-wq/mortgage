@@ -1,8 +1,8 @@
 # Phase 1 検証ランブック（完了済み検証の再実行・回帰調査用 / npm + Docker 利用可能環境で実施）
 
-**状態（2026-07-27）: 本書の A・B は Mac 実機で完了済み。CI 実走行も完了。**
-**A 相当（typecheck / lint / unit / build / PostgreSQL harness）は既存 workflow の Run #10 / run ID `30205025559` / head commit `21bf31b`・success（初回確認は Run #4 / commit `2bbae3b`・全ジョブ green）。**
-**B 相当（実 Supabase local の verify:supabase / e2e:local）は workflow `Supabase local E2E` の Run #1 / run ID `30205025523`・success。**
+**状態（2026-07-28）: 本書の A・B は Mac 実機で完了済み。CI 実走行も完了。**
+**A 相当（typecheck / lint / unit / build / PostgreSQL harness）は既存 workflow の最新 Run #12 / run ID `30349567309` / head commit `6cbe362`・success（過去: Run #10 / run ID `30205025559` / commit `21bf31b`・success。初回確認は Run #4 / commit `2bbae3b`・全ジョブ green）。**
+**B 相当（実 Supabase local の verify:supabase / e2e:local）は workflow `Supabase local E2E` の最新 Run #2 / run ID `30349565674` / head commit `6cbe362`・success（初回: Run #1 / run ID `30205025523`・success）。**
 **本書は新規の残作業リストではない。** 完了済み検証の再実行手順、および回帰が疑われるときの
 調査 runbook として維持する。各項目の現在の状態は test-cases.md §7（B1..B17）と
 phase1-validation.md §1.4〜§1.7 を正とし、本書は手順のみを持つ。
@@ -136,10 +136,13 @@ AUTH-E2E-29 実行時にサーバーログへ出る supabase-js 由来の
 `AuthApiError: Refresh token is not valid`（class / status=400 / code=validation_failed のみ・秘密値なし）は正常。
 
 同じ B 相当の検証は CI（GitHub Actions workflow `Supabase local E2E`）でも成立している。
-Run #1 / run ID `30205025523`・success、Supabase CLI **2.109.1**、`npm run verify:supabase` **28/28 PASS**、
+初回は Run #1 / run ID `30205025523`・success、Supabase CLI **2.109.1**、`npm run verify:supabase` **28/28 PASS**、
 `npm run e2e:local` **24/24 PASS**（当時の全件。`Running 24 tests using 1 worker` / 実行時間 1.1 分）。
-B10-refresh（`app/**` 変更）を含む push 後は同 workflow が新たな run（26 件想定）として起動する予定
-（CI 実走行は未実施・結果は PENDING）。
+**B10-refresh（AUTH-E2E-28/29）を含む最新は Run #2 / run ID `30349565674` / commit `6cbe362`・success**
+（2026-07-28。job `Supabase local stack (verify:supabase + e2e:local)` 約5分00秒 / run 全体 約5分09秒 /
+artifact 0 件。あわせて既存 CI も Run #12 / run ID `30349567309`・success — 2 job とも success・run 全体 約58秒。
+run / job conclusion・所要時間・artifact 0 件は API 実測。**Run #2 の CI ログ本文は未取得**のため、
+件数の文言レベルの確認範囲は test-cases.md §7.1 の区別を正とする）。
 失敗監査ログは `failure-audit refused by actor/membership guard` **2 件** / `failure-audit write failed` **0 件**。
 job 4 分 47 秒 / run 全体 5 分 11 秒、artifact **0 件**。
 CI では `npm run e2e:auth` を実行しない（`e2e:local` の真部分集合であり二重実行になるため）。Mac 実機では独立ゲートとして継続する。

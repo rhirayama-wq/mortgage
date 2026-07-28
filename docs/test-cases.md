@@ -233,8 +233,8 @@ CI（Supabase local E2E Run #1）でも同様に `failure-audit refused by actor
 | unit test (Vitest 正式) | APP_PASS | Vitest 3.2.7 で **55/55 PASS**（最新コード, Mac, 2026-07-26。B13-HTTP の `audit.test.ts` 14 件を含む） |
 | production build | APP_PASS | Next.js 15.5.21 build 成功（全10ルート生成, 最新コード, Mac, 2026-07-25） |
 | E2E | **SUPABASE_LOCAL_PASS** | `npm run e2e:local` **26/26 PASS**（Mac 2026-07-27）。内訳は **既存 E2E 7 件（e2e/auth.spec.ts）＋ auth setup 1 件 ＋ 認証済み E2E 18 件（authenticated/authz.spec.ts 14 + authenticated/audit-http.spec.ts 2 + authenticated/session-refresh.spec.ts 2）**。`npm run e2e:auth` は **19/19 PASS**（auth setup 1 + 18）。B10-refresh 追加前（2026-07-26）は 24/24 を 2 回連続 / 17/17。§7 B6..B12/B10-refresh/B13-HTTP/B14/B16/B17 |
-| CI (GitHub Actions / 既存 quality gate) | **APP_PASS**（実走行） | `.github/workflows/ci.yml`。**Run #10 / run ID `30205025559` / commit `21bf31b`・success**。Linux クリーン環境で `npm ci` → typecheck / lint / unit / build、PostgreSQL harness。初回の実走行確認は Run #4 / commit `2bbae3b`（2026-07-25・Node v22.23.1 / npm 11.12.1・`PG HARNESS: ALL TESTS PASSED`） |
-| CI (GitHub Actions / Supabase local E2E) | **SUPABASE_LOCAL_PASS**（実走行） | `.github/workflows/supabase-local-e2e.yml`（workflow 名 `Supabase local E2E`）。**Run #1 / run ID `30205025523` / commit `21bf31b`・success**。Supabase CLI 2.109.1 で `supabase start` → `supabase db reset` → `npm run verify:supabase` **28/28**（FAIL 0 / SKIP 0）→ `npm run e2e:local` **24/24**（当時の全件・1 worker・1.1 分）。job 4 分 47 秒 / run 全体 5 分 11 秒。§7.1。**B10-refresh（AUTH-E2E-28/29・`app/**` 変更）を含む push 後に新たな run（26 件想定）が起動する予定 — CI 実走行は未実施・結果は PENDING** |
+| CI (GitHub Actions / 既存 quality gate) | **APP_PASS**（実走行） | `.github/workflows/ci.yml`。最新は **Run #12 / run ID `30349567309` / commit `6cbe362`・success**（2026-07-28。typecheck / lint / unit / build 約53秒・PostgreSQL harness 約39秒・run 全体 約58秒）。過去: Run #10 / run ID `30205025559` / commit `21bf31b`・success。Linux クリーン環境で `npm ci` → typecheck / lint / unit / build、PostgreSQL harness。初回の実走行確認は Run #4 / commit `2bbae3b`（2026-07-25・Node v22.23.1 / npm 11.12.1・`PG HARNESS: ALL TESTS PASSED`） |
+| CI (GitHub Actions / Supabase local E2E) | **SUPABASE_LOCAL_PASS**（実走行） | `.github/workflows/supabase-local-e2e.yml`（workflow 名 `Supabase local E2E`）。**Run #1 / run ID `30205025523` / commit `21bf31b`・success**。Supabase CLI 2.109.1 で `supabase start` → `supabase db reset` → `npm run verify:supabase` **28/28**（FAIL 0 / SKIP 0）→ `npm run e2e:local` **24/24**（当時の全件・1 worker・1.1 分）。job 4 分 47 秒 / run 全体 5 分 11 秒。§7.1。**B10-refresh（AUTH-E2E-28/29）を含む最新は Run #2 / run ID `30349565674` / commit `6cbe362`・success**（2026-07-28。job 約5分00秒 / run 全体 約5分09秒 / artifact 0 件。§7.1 の確認範囲の区別を参照） |
 | package-lock.json 生成 | 完了 | Mac で生成・コミット（8add410）。version 欠落 optional スタブを `2bbae3b` で修復し、Linux クリーン環境の `npm ci` 成立を CI で確認 |
 | 正式 `npm run verify` | **APP_PASS（最新コード）** | B10-refresh 差分（e2e 配下のみ）を含む状態で typecheck+lint+Vitest(55/55)+build(全10ルート) 全成功（Mac, 2026-07-27）。**verify:supabase 28/28・e2e:local 26/26・e2e:auth 19/19 も PASS**（下記 §7。2026-07-26 実測は e2e:local 24/24 を 2 回連続 / e2e:auth 17/17） |
 
@@ -269,7 +269,7 @@ auth setup は storageState を生成する準備 project であり、**業務�
 | B8 | 使用済みリンク再利用拒否（clean client で 2 回目→/login?e=link） | e2e AUTH-E2E-06 | AUTH-18 | **SUPABASE_LOCAL_PASS**（Mac 2026-07-25） |
 | B9 | 招待先メール一致: 他人(B)は A の membership を accept 不可・状態/監査不変 | verify-supabase B9-reject/state-intact/no-forged-audit（実 Supabase）+ FUNC-03（DB） | AUTH-19 | DB=PG_HARNESS_PASS / 実 Supabase=**SUPABASE_LOCAL_PASS**（Mac 2026-07-25） |
 | B10 | **セッション維持のみ**（別リクエストで未認証へ戻らない） | e2e AUTH-E2E-06 | AUTH-09 | **SUPABASE_LOCAL_PASS**（Mac 2026-07-25。セッション維持の範囲） |
-| B10-refresh | middleware token refresh の強制検証: Cookie 内セッションの `expires_at` だけを過去へ書き換えて期限切れ相当とし（token 値・JWT は改変しない）、正規 `getUser()` 経路の refresh（成功経路）と refresh token 無効時の安全な失敗（失敗経路）を実機確認 | e2e AUTH-E2E-28/29（`session-refresh.spec.ts` + `fixtures/session-cookie.ts`） | AUTH-10 | **SUPABASE_LOCAL_PASS**（Mac 2026-07-27。対象 spec 単体 2 回独立実行 + e2e:auth 19/19 + e2e:local 26/26 で全 PASS。CI 実走行は push 後の予定・PENDING）|
+| B10-refresh | middleware token refresh の強制検証: Cookie 内セッションの `expires_at` だけを過去へ書き換えて期限切れ相当とし（token 値・JWT は改変しない）、正規 `getUser()` 経路の refresh（成功経路）と refresh token 無効時の安全な失敗（失敗経路）を実機確認 | e2e AUTH-E2E-28/29（`session-refresh.spec.ts` + `fixtures/session-cookie.ts`） | AUTH-10 | **SUPABASE_LOCAL_PASS**（Mac 2026-07-27。対象 spec 単体 2 回独立実行 + e2e:auth 19/19 + e2e:local 26/26 で全 PASS。CI でも `Supabase local E2E` Run #2 / commit `6cbe362`・success で実走行済み — 2026-07-28・§7.1）|
 | B11 | 認証 Cookie 属性（**部分検証**: httpOnly=true（U22 で強制）/ path=`/` / sameSite=Lax / callback redirect 後も存在）。secure はローカル HTTP で false のため固定 assert しない | e2e AUTH-E2E-06 | AUTH-09 | **SUPABASE_LOCAL_PASS**（Mac 2026-07-25。部分検証の範囲） |
 | B12 | signout 契約（認証状態に依らず GET=405 / POST=303→/login、認証済み POST 後は auth-token Cookie 消滅、以後 /cases→/login）。**middleware が `/auth/signout` を未認証 redirect 対象から除外し handler へ到達させる修正込み** | e2e: 未認証GET=AUTH-E2E-03(405) / 未認証POST=AUTH-E2E-07(303) / 認証済みPOST・Cookie消滅・/cases→/login=AUTH-E2E-06 | AUTH-17 | **SUPABASE_LOCAL_PASS**（Mac 2026-07-25。全経路実機確認） |
 | B13-DB | 失敗監査の別Tx（DB/PostgREST・service_role・correlation・SEC-83/86） | verify-supabase B13a/b/c | FUNC-15, SEC-83/86 | **SUPABASE_LOCAL_PASS**（Mac 2026-07-25） |
@@ -318,7 +318,7 @@ verify-supabase は非ループバック URL への接続を拒否する（本�
 - Supabase CLI **2.109.1**（`supabase/setup-cli` の version pin）で `supabase start` → `supabase db reset`
 - `npm run verify:supabase` → **PASS 28 / FAIL 0 / SKIP 0**（B1 / B2 / B3 / B4 / B5 / B9 / B13-DB / B15）
 - `npm run e2e:local` → `Running 24 tests using 1 worker` / **24 passed（1.1 分）**。
-  B13-HTTP の **AUTH-E2E-26 / 27 を含む当時の全 24 件が PASS**（B10-refresh 追加後の現行は 26 件・CI 実走行は push 後の予定）
+  B13-HTTP の **AUTH-E2E-26 / 27 を含む当時の全 24 件が PASS**（B10-refresh 追加後の現行 26 件は Run #2 で実走行済み — 下記）
 - 失敗監査ログは `failure-audit refused by actor/membership guard` の warn が **2 件**、
   `failure-audit write failed` は **0 件**（3 分類のうち `refused_by_guard` のみで `write_failed` なし）
 - fixture は **法人 2 / ユーザー 8**、すべて架空の **`@example.test`** のみ
@@ -331,18 +331,32 @@ verify-supabase は非ループバック URL への接続を拒否する（本�
 `e2e:local`（既存 7 + auth setup 1 + 認証済み 18 = 26 件）の**真部分集合**であり、CI で別途走らせても
 新たに検証される項目が無いため。Mac では従来どおり**独立ゲート**として単独実行できる。
 
-B10-refresh（AUTH-E2E-28/29・`app/**` 変更）を含む push 後は、この workflow が新たな run（26 件想定）として
-起動する予定。**CI 実走行は未実施であり、結果を先取りして記載しない。**
+**B10-refresh（AUTH-E2E-28/29）を含む Run #2 の実走行結果（2026-07-28）**:
+**Run #2 / run ID `30349565674` / commit `6cbe362` / trigger push / branch main・success**。
+job `Supabase local stack (verify:supabase + e2e:local)` = success（約5分00秒）/ run 全体 約5分09秒 /
+**artifact 0 件**（Run #1 と同水準の所要時間でテスト 2 件増を吸収）。
+
+**Run #2 の確認範囲の区別（過大申告しない）**:
+- **API 実測で直接確認済み**: run の存在 / run ID / head commit / trigger / branch / run・job の
+  conclusion（success）/ 所要時間 / artifact 0 件。
+- **workflow 定義・job success・ローカル実測から判断**: `verify:supabase` と `e2e:local` は独立 step で、
+  いずれかが非0終了すれば job は failure になるため、**job success = 両 step の成功終了**。workflow は
+  `E2E_SUPABASE_LOCAL=1` を設定するため AUTH-E2E-28/29 は skip されず、Playwright は失敗時に非0終了する
+  ことから **AUTH-E2E-28/29 を含む全件の成功終了**と判断できる。Supabase CLI は workflow 定義上 2.109.1 pin・
+  1 worker 実行。
+- **CI ログ本文は未取得のため文言レベルでは未確認**: `PASS=28 / FAIL=0 / SKIP=0` や
+  `Running 26 tests using 1 worker` / `26 passed` という実ログ文字列、AuthApiError の CI 出力、
+  ログ全文に秘密値が無いことの網羅確認（Run #1 と同じ留保。security.md §7.2）。
 
 **役割分担**:
 
 | 実行環境 | 担当範囲 |
 |---|---|
-| 既存 CI（`.github/workflows/ci.yml`） | typecheck / lint / unit / build / PostgreSQL harness の高速 quality gate（Run #10 / run ID `30205025559`） |
-| CI Supabase local E2E（`Supabase local E2E`） | 実 Supabase（PostgREST / GoTrue / Mailpit）を伴う統合検証。`verify:supabase` 28/28 + `e2e:local` 24/24（Run #1 / run ID `30205025523`） |
+| 既存 CI（`.github/workflows/ci.yml`） | typecheck / lint / unit / build / PostgreSQL harness の高速 quality gate（最新 Run #12 / run ID `30349567309`。過去 Run #10 / run ID `30205025559`） |
+| CI Supabase local E2E（`Supabase local E2E`） | 実 Supabase（PostgREST / GoTrue / Mailpit）を伴う統合検証。最新 Run #2 / run ID `30349565674`（B10-refresh 込み）。過去 Run #1 / run ID `30205025523`（`verify:supabase` 28/28 + `e2e:local` 24/24・当時の全件） |
 | Mac 実機 | 2 回連続実行・`e2e:auth` 単独実行など、CI では行わない追加確認 |
 
-> **最終状態（2026-07-27）**: **`npm run verify:supabase` 28/28 全 PASS**（B1..B5 / B9 / B13-DB / B15）、
+> **最終状態（2026-07-28）**: **`npm run verify:supabase` 28/28 全 PASS**（B1..B5 / B9 / B13-DB / B15）、
 > **`npm run e2e:local` 26/26 全 PASS**（B6..B8 / B10(session) / B10-refresh / B11(部分検証) / B12 / B13-HTTP / B14 / B16 / B17）、
 > **`npm run e2e:auth` 19/19 全 PASS**、**対象 spec（AUTH-E2E-28/29）単体 2 回独立実行いずれも PASS**、
 > **`npm run verify`（typecheck/lint/Vitest 55/55/build）最新コードで PASS** — いずれも Mac 実機。
@@ -356,14 +370,16 @@ B10-refresh（AUTH-E2E-28/29・`app/**` 変更）を含む push 後は、この 
 > **AUTH-12..16 は §5.1 / B17 として実装・実機検証し SUPABASE_LOCAL_PASS へ更新した。**
 > **B13-HTTP も AUTH-E2E-26/27 として実装・実機検証し SUPABASE_LOCAL_PASS へ更新した**（PENDING から除外）。
 > **B10-refresh も AUTH-E2E-28/29 として実装・実機検証し SUPABASE_LOCAL_PASS へ更新した**（2026-07-27・PENDING から除外。
-> CI 実走行は push 後の予定で未実施）。
+> CI でも 2026-07-28 に `Supabase local E2E` Run #2 / commit `6cbe362`・success で実走行済み — §7.1）。
 > **既知の残課題（テスト PENDING）は 2 分類**:
 > ① **AUTH-11 実機**（DB 障害を /error へ振り分ける経路の実機確認）
 > ② **Magic Link 有効期限の境界検証**（期限切れリンクの時間経過を伴う検証。単回使用・再利用拒否は PASS 済み）。
 > このほか **npm audit の high severity 12 件** は運用側バックログとして継続管理する。
-> **CI リモート実走行も完了**（既存 CI: Run #10 / run ID `30205025559` / commit `21bf31b`・success。テスト PENDING とは区別。
-> その後 docs 反映 commit `eac56e7` に対する Run #11 も success）。
-> **実 Supabase local 検証の CI 化も完了**（`Supabase local E2E` Run #1 / run ID `30205025523` / commit `21bf31b`・success。
-> `verify:supabase` 28/28・`e2e:local` 24/24（当時の全件）。§7.1）。
+> **CI リモート実走行も完了**（既存 CI: 最新は B10-refresh 込みの Run #12 / run ID `30349567309` / commit `6cbe362`・success
+>（2026-07-28。2 job とも success・run 全体 約58秒）。過去: Run #10 / run ID `30205025559` / commit `21bf31b`・success、
+> docs 反映 commit `eac56e7` に対する Run #11 も success。テスト PENDING とは区別）。
+> **実 Supabase local 検証の CI 化も完了**（最新は B10-refresh 込みの `Supabase local E2E` Run #2 / run ID `30349565674` /
+> commit `6cbe362`・success（2026-07-28・artifact 0 件・確認範囲は §7.1）。初回は Run #1 / run ID `30205025523` /
+> commit `21bf31b`・success。`verify:supabase` 28/28・`e2e:local` 24/24（当時の全件）。§7.1）。
 > **結論: Phase 1 の機能実装・主要実機検証・CI 実走行（既存 CI と Supabase local E2E の両方）は完了。
 > 上記 2 分類は Phase 1 完了を妨げない追加検証バックログとして継続管理し、PASS 扱いにしない。Phase 2 は未着手。**

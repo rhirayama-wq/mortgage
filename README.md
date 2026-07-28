@@ -6,7 +6,7 @@
 
 **開発ルールの最上位は `CLAUDE.md`。作業開始時は必ず CLAUDE.md → README → /docs の順に読むこと。**
 
-## 現在地（2026-07-27）
+## 現在地（2026-07-28）
 - **Phase 1 の機能実装・主要実機検証・CI 実走行は完了**（Phase 1 クローズ）。
 - Mac 実機: `npm run verify`（typecheck / lint / Vitest **55/55** / production build）PASS、
   `npm run verify:supabase` **28/28 PASS**、`npm run e2e:local` **26/26 PASS**、
@@ -34,17 +34,23 @@
   アクセスが /login へ誘導されることを確認した → docs/test-cases.md §7 B10-refresh。
 - **CI は 2 本立てで、いずれも実走行済み**。
   - 既存 CI（`.github/workflows/ci.yml`・高速 quality gate: typecheck / lint / unit / build /
-    PostgreSQL harness）: **Run #10 / run ID `30205025559` / commit `21bf31b`・success**。
-    初回の実走行確認は Run #4 / commit `2bbae3b`（2026-07-25・Node v22.23.1 / npm 11.12.1 で `npm ci` PASS、
+    PostgreSQL harness）: 最新は **Run #12 / run ID `30349567309` / commit `6cbe362`・success**
+    （2026-07-28。job: typecheck / lint / unit / build 約53秒・PostgreSQL harness 約39秒・run 全体 約58秒）。
+    それ以前の実走行は Run #10 / run ID `30205025559` / commit `21bf31b`・success、
+    初回確認は Run #4 / commit `2bbae3b`（2026-07-25・Node v22.23.1 / npm 11.12.1 で `npm ci` PASS、
     PostgreSQL harness `PG HARNESS: ALL TESTS PASSED`）。
   - **実 Supabase local 検証の CI 化も完了**（`.github/workflows/supabase-local-e2e.yml` /
-    workflow 名 `Supabase local E2E` / 追加 commit `21bf31b`）: **Run #1 / run ID `30205025523`・success**。
-    Supabase CLI **2.109.1** で `supabase start` → `supabase db reset` → `npm run verify:supabase` **28/28 PASS** →
-    `npm run e2e:local` **24/24 PASS**（1 worker・E2E 実行 1.1 分）。job 4 分 47 秒 / run 全体 5 分 11 秒。
+    workflow 名 `Supabase local E2E` / 追加 commit `21bf31b`）: 最新は **B10-refresh（AUTH-E2E-28/29）を
+    含む Run #2 / run ID `30349565674` / commit `6cbe362`・success**（2026-07-28。job
+    `Supabase local stack (verify:supabase + e2e:local)` 約5分00秒 / run 全体 約5分09秒 / artifact 0 件。
+    run / job の conclusion・所要時間・artifact 0 件は API 実測。`verify:supabase` / `e2e:local` step の
+    成功終了と AUTH-E2E-28/29 が skip されず成功したことは job success + workflow 定義 + ローカル実測
+    26/26 から判断。**CI ログ本文は未取得**のため件数の文言レベルはログでは未確認）。
+    初回は Run #1 / run ID `30205025523`・success（Supabase CLI **2.109.1** で `supabase start` →
+    `supabase db reset` → `npm run verify:supabase` **28/28 PASS** → `npm run e2e:local` **24/24 PASS**
+    （当時の全件・1 worker・E2E 実行 1.1 分）。job 4 分 47 秒 / run 全体 5 分 11 秒）。
     接続先は loopback のみで、Supabase の鍵をリポジトリ Secrets に置かない
     → docs/security.md §7.2 / docs/test-cases.md §7.1。
-    **B10-refresh（AUTH-E2E-28/29・`app/**` 変更）を含む push 後は、この workflow が
-    新たな run として起動する予定（CI 実走行は未実施・結果は PENDING）。**
 - package-lock.json は npm **11.12.1** 固定でコミット済み。Linux クリーン環境での `npm ci` も CI で成立。
 - DB 層: migration v6 相当を PGハーネス（PostgreSQL 16.13）で検証済み。
   実 Supabase local（PostgREST / GoTrue / Mailpit）でも検証済み → docs/phase1-validation.md。
