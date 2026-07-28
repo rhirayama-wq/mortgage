@@ -1,23 +1,24 @@
 # Phase 1 検証ランブック（完了済み検証の再実行・回帰調査用 / npm + Docker 利用可能環境で実施）
 
-**状態（2026-07-26）: 本書の A・B は Mac 実機で完了済み。CI 実走行も完了。**
+**状態（2026-07-27）: 本書の A・B は Mac 実機で完了済み。CI 実走行も完了。**
 **A 相当（typecheck / lint / unit / build / PostgreSQL harness）は既存 workflow の Run #10 / run ID `30205025559` / head commit `21bf31b`・success（初回確認は Run #4 / commit `2bbae3b`・全ジョブ green）。**
 **B 相当（実 Supabase local の verify:supabase / e2e:local）は workflow `Supabase local E2E` の Run #1 / run ID `30205025523`・success。**
 **本書は新規の残作業リストではない。** 完了済み検証の再実行手順、および回帰が疑われるときの
 調査 runbook として維持する。各項目の現在の状態は test-cases.md §7（B1..B17）と
-phase1-validation.md §1.4〜§1.6 を正とし、本書は手順のみを持つ。
+phase1-validation.md §1.4〜§1.7 を正とし、本書は手順のみを持つ。
 
 完了済み（本書の手順は再実行・回帰調査用として残す）:
 - **AUTH-12..16（認証済みロール・状態別 E2E）= SUPABASE_LOCAL_PASS**（B17 / AUTH-E2E-12..25 の 14 件。test-cases.md §5.1）
 - **B13-HTTP（Next.js Server Action 経由の実 HTTP 失敗監査経路）= SUPABASE_LOCAL_PASS**
   （AUTH-E2E-26/27 の 2 件。phase1-validation.md §1.6）
+- **B10-refresh（middleware token refresh の強制検証）= SUPABASE_LOCAL_PASS**
+  （AUTH-E2E-28/29 の 2 件。Mac 2026-07-27。phase1-validation.md §1.7）
 
-既知の主要残課題は次の 3 分類のみで、いずれも Phase 1 完了を妨げない追加検証バックログである
+既知の主要残課題は次の 2 分類のみで、いずれも Phase 1 完了を妨げない追加検証バックログである
 （phase1-validation.md §2）:
 
-1. **B10-refresh**（AUTH-10 / 下表 B10）
-2. **AUTH-11 実機**
-3. **Magic Link 有効期限の境界検証**
+1. **AUTH-11 実機**
+2. **Magic Link 有効期限の境界検証**
 
 別枠のバックログ: npm audit high severity 12 件 / Phase 2。
 
@@ -105,33 +106,40 @@ npm run dev
 | B7 | Mailpit | http://127.0.0.1:54324 で受信。リンクが /auth/callback?token_hash=...&type=email 形式であること |
 | B8 | 使用済みリンク再利用拒否 | 同一リンクを2回開く → 2回目は /login?e=link（AUTH-18） |
 | B9 | 招待先メール一致 | FUNC-03 相当を実 GoTrue ユーザーで（メール変更→accept 拒否: AUTH-19） |
-| B10 | middleware refresh Cookie | 期限切れ間際セッションでアクセスし Set-Cookie を確認（AUTH-09/10） |
+| B10 | middleware refresh Cookie | セッション維持は AUTH-E2E-06。**refresh の強制は B10-refresh = `npm run e2e:auth` の AUTH-E2E-28/29**: Cookie 内セッションの `expires_at` だけを過去へ書き換え（token 値は無傷）、正規 `getUser()` 経路での refresh（access token 更新・rotation・同一 user・httpOnly 維持・RLS 文脈維持・Server Action 実行可）と、refresh token 無効時の安全な失敗（Server Action POST への /login redirect 応答をサーバー応答で直接検証・保護ルートも /login）を確認する（AUTH-09/10） |
 | B11 | redirect 時 Cookie 属性維持 | 未認証で /cases → /login リダイレクトの Set-Cookie に httpOnly/path/sameSite 等が維持されること |
 | B12 | signout POST | POST /auth/signout → 303。GET → 405（AUTH-17） |
 | B13-DB | 失敗監査の別Tx（DB / PostgREST 単体） | `npm run verify:supabase` の B13a/b/c。service_role で `app_record_membership_accept_failure` を直接呼び、別トランザクションでの記録・correlation 冪等性・SEC-83/86 のガードを確認する（**アプリの HTTP 経路は通らない**） |
 | B13-HTTP | 失敗監査の別Tx（実 HTTP 経路） | `npm run e2e:auth` の AUTH-E2E-26/27。**正当な業務失敗**（26）は別 PostgREST リクエスト / 別 Tx で `success=false` 行が **1 件**記録される。**actor と membership 本人が一致しない偽造監査**（27）は SEC-83 が拒否し **監査行 0 件**（`failure-audit refused by actor/membership guard` の warn が出るのが正常であり、`failure-audit write failed` ではない）。監査行の読取は SYSTEM_ADMIN の認証済み session + RLS 経由（service_role にこのテーブルの SELECT 権限は無い） |
-| B14 | AUTH 対象テスト | AUTH-01..20 の実 Supabase 必要分（test-cases.md §5）。**AUTH-12..16 は SUPABASE_LOCAL_PASS 済み**。回帰調査時に残る点検対象は AUTH-10 refresh 強制・AUTH-11 実機のみ |
+| B14 | AUTH 対象テスト | AUTH-01..20 の実 Supabase 必要分（test-cases.md §5）。**AUTH-12..16・AUTH-10 refresh 強制（B10-refresh）は SUPABASE_LOCAL_PASS 済み**。回帰調査時に残る点検対象は AUTH-11 実機のみ |
 | B15 | Supabase 対象 SEC | SEC の PostgREST 経由再確認（越境・直接書込・監査保護） |
-| B16 | Playwright E2E | `npm run e2e:local`（**24 件** = 既存 E2E 7 + auth setup 1 + 認証済み E2E 16）。認証済み分のみは `npm run e2e:auth`（**17 件** = auth setup 1 + 16） |
-| B17 | 認証済みロール・状態別 E2E 基盤 | `auth-setup` project の storageState 再利用 + `e2e/authenticated/authz.spec.ts`（AUTH-E2E-12..25 の 14 件）+ `e2e/authenticated/audit-http.spec.ts`（AUTH-E2E-26/27 の 2 件）。**SUPABASE_LOCAL_PASS**（test-cases.md §5.1 / §7 B17） |
+| B16 | Playwright E2E | `npm run e2e:local`（**26 件** = 既存 E2E 7 + auth setup 1 + 認証済み E2E 18）。認証済み分のみは `npm run e2e:auth`（**19 件** = auth setup 1 + 18） |
+| B17 | 認証済みロール・状態別 E2E 基盤 | `auth-setup` project の storageState 再利用 + `e2e/authenticated/authz.spec.ts`（AUTH-E2E-12..25 の 14 件）+ `e2e/authenticated/audit-http.spec.ts`（AUTH-E2E-26/27 の 2 件）+ `e2e/authenticated/session-refresh.spec.ts`（AUTH-E2E-28/29 の 2 件）。**SUPABASE_LOCAL_PASS**（test-cases.md §5.1 / §7 B17） |
 
 ### 再実行・回帰調査時の報告に含めるもの
 実行コマンドと終了コード / supabase CLI・スタックのバージョン / B1..B17 の PASS・FAIL 一覧 /
 失敗があれば内容と原因分類（設計・実装・環境）/ test-cases.md と phase1-validation.md の状態更新 /
 Phase 1 受入条件（要件定義書 12.2）との対応表。
 
-直近の実測基準値（Mac 2026-07-26）は次のとおり。回帰調査ではこの値と突き合わせる。
+直近の実測基準値（Mac 2026-07-27。B10-refresh = AUTH-E2E-28/29 追加後）は次のとおり。
+回帰調査ではこの値と突き合わせる。
 
 | ゲート | 基準値 |
 |---|---|
 | `npm run test`（Vitest） | **55/55 PASS** |
 | `npm run verify:supabase` | **28/28 PASS** |
-| `npm run e2e:auth` | **17/17 PASS** |
-| `npm run e2e:local` | **24/24 PASS を 2 回連続** |
+| `npm run e2e:auth` | **19/19 PASS** |
+| `npm run e2e:local` | **26/26 PASS** |
+
+（B10-refresh 追加前の 2026-07-26 実測は `e2e:auth` 17/17 / `e2e:local` 24/24 を 2 回連続。）
+AUTH-E2E-29 実行時にサーバーログへ出る supabase-js 由来の
+`AuthApiError: Refresh token is not valid`（class / status=400 / code=validation_failed のみ・秘密値なし）は正常。
 
 同じ B 相当の検証は CI（GitHub Actions workflow `Supabase local E2E`）でも成立している。
 Run #1 / run ID `30205025523`・success、Supabase CLI **2.109.1**、`npm run verify:supabase` **28/28 PASS**、
-`npm run e2e:local` **24/24 PASS**（`Running 24 tests using 1 worker` / 実行時間 1.1 分）。
+`npm run e2e:local` **24/24 PASS**（当時の全件。`Running 24 tests using 1 worker` / 実行時間 1.1 分）。
+B10-refresh（`app/**` 変更）を含む push 後は同 workflow が新たな run（26 件想定）として起動する予定
+（CI 実走行は未実施・結果は PENDING）。
 失敗監査ログは `failure-audit refused by actor/membership guard` **2 件** / `failure-audit write failed` **0 件**。
 job 4 分 47 秒 / run 全体 5 分 11 秒、artifact **0 件**。
 CI では `npm run e2e:auth` を実行しない（`e2e:local` の真部分集合であり二重実行になるため）。Mac 実機では独立ゲートとして継続する。

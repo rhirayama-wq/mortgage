@@ -99,6 +99,12 @@ EXECUTE は public/anon から revoke。トリガー関数・内部関数（app_
 - 実 Supabase local に対する実 HTTP で、SYSTEM_ADMIN 境界・ORGANIZATION_ADMIN / SALES_USER の着地・invited / suspended / left の状態別拒否・他法人 ID 差し替え拒否（URL / query / request body）を確認済み。拒否の形は **403 ではなく redirect**（fail closed の設計どおり）。
 - fixture の用意は公開業務関数のみを使い、**migration / RLS / GRANT / `scripts/pg-harness/00_shim_supabase.sql` は一切変更していない**。接続先はループバックのみ（本番接続禁止・CLAUDE.md §32）。
 - **監査ログの読取（B13-HTTP / AUTH-E2E-26/27）も同じ姿勢**: 読取は `app/e2e/fixtures/audit-reader.ts` が **SYSTEM_ADMIN の認証済み session + RLS 経由**で行い、**service role key を browser へ渡さない**。ログ・アサーション差分へ token / Cookie / Magic Link URL / anon key / service role key / DB 生エラー全文を出さず、出すのは correlation ID のみ。timeout 延長 / retry 追加 / skip 追加 / 期待値の弱体化は行っていない。
+- **セッション refresh 検証（B10-refresh / AUTH-E2E-28/29・2026-07-27）も同じ姿勢**:
+  - `app/e2e/fixtures/session-cookie.ts` が認証 Cookie（`sb-*-auth-token`・チャンク対応）を復号し、**セッション JSON の `expires_at` だけを過去へ書き換えて**期限切れ相当を再現する。**JWT の偽造・署名改変・GoTrue 設定変更・admin API によるセッション操作はしない**。refresh は middleware の正規 `getUser()` 経路で GoTrue に対して実際に行われる。
+  - **token / Cookie 値 / storageState 内容 / JWT はログにもアサーション差分にも出さない**。access token 更新・refresh token rotation・user ID 一致・expiry の前後・httpOnly 維持は、**すべて boolean へ畳んでから** assert する。ヘルパーのエラーも固定文言と件数のみ。
+  - 失敗経路（AUTH-E2E-29）では refresh token を**実在しない固定文字列**に置き換える。**実在した refresh token を GoTrue へ再送しない**ため、rotation の reuse 検知による既存セッションファミリーの失効を誘発しない。Server Action POST は middleware により /login への redirect 応答となる。Next.js クライアントがその応答を画面遷移へ変換しない場合があるため、E2E ではサーバー応答を直接検証し、続く保護ルートアクセスが /login へ誘導されることを確認した。画面へ JWT 断片・例外詳細を出さないことも assert する。
+  - この際サーバーログに出る supabase-js 由来の `AuthApiError: Refresh token is not valid`（class / status=400 / code=validation_failed）は**秘密値を含まない安全な識別子のみ**であり、許容する。
+  - trace / artifact のアップロードはしない。timeout 延長 / retry 追加 / skip 追加 / 期待値の弱体化 / application code・middleware・Supabase config の変更は行っていない。
 
 ## 7.2 CI（GitHub Actions）での実 Supabase local 検証のセキュリティ設計
 - 実 Supabase local 検証は workflow **`Supabase local E2E`**（`.github/workflows/supabase-local-e2e.yml`・commit `21bf31b` で追加）として CI 化済み。**Run #1 / run ID `30205025523`・success**（Supabase CLI **2.109.1** を `version` で pin）。GitHub-hosted runner に既定で用意されている Docker daemon をそのまま利用しており、**Docker-in-Docker 構成ではない**。
@@ -108,18 +114,18 @@ EXECUTE は public/anon から revoke。トリガー関数・内部関数（app_
 - fixture は Mac 実機と同一で、**法人 2 / ユーザー 8・すべて架空の `@example.test`**。パスワードや共通秘密値を workflow へ埋め込まない。
 - **artifact は 0 件**。trace / screenshot / storageState が秘密値を含まないことを確証できないため、artifact アップロードのステップ自体を実装していない（workflow 下部 NOTE に理由を明記）。storageState は run のたびに生成され、run 終了とともに破棄される。
 - 失敗監査ログの実測は Mac 実機と一致し、`failure-audit refused by actor/membership guard` の warn **2 件** / `failure-audit write failed` **0 件**。correlation ID は実ログに存在するが、**本書を含む文書へは転記しない**。
-- `npm run e2e:auth` は `npm run e2e:local` の真部分集合であるため、CI では重複実行しない（auth setup 1 件と authenticated 16 件が二重に走るため）。Mac 実機では独立ゲートとして継続する。
+- `npm run e2e:auth` は `npm run e2e:local` の真部分集合であるため、CI では重複実行しない（auth setup 1 件と authenticated 18 件が二重に走るため）。Mac 実機では独立ゲートとして継続する。
 - **本節の評価範囲**: 上記は **共有されたログ抜粋と workflow の静的設計から確認できた範囲**の記載である。**ログ全文に対する秘密値の網羅検索は実施していない**。
 
 ## 8. PII・秘密
 ログ・URL・監査 metadata へメールアドレス等の PII を出さない（login 失敗ログはアドレス自体を抑制）。シード・テストは架空データのみ（fictional / test only 明記）。本番 Supabase 接続・本番 Magic Link 送信・本番シークレット設定は禁止。
 
 ## 9. 本番前の残リスク（phase1-validation.md と対応）
-- PostgREST / GoTrue / Mailpit / 実 JWT による主要検証は完了（Mac 実機 2026-07-26: `npm run verify:supabase` **28/28 PASS** / `npm run e2e:local` **24/24 PASS を 2 回連続** / `npm run e2e:auth` **17/17 PASS** / Vitest **55/55 PASS**）。24 件の内訳は **既存 E2E 7 + auth setup 1 + 認証済み E2E 16（AUTH-E2E-12..27）**で、auth setup は業務テスト 16 件とは別に数える。**同一の検証は CI でも成立**（GitHub Actions `Supabase local E2E` Run #1 / run ID `30205025523`・success。`verify:supabase` **28/28 PASS** / `e2e:local` **24/24 PASS**。§7.2）。
+- PostgREST / GoTrue / Mailpit / 実 JWT による主要検証は完了（Mac 実機 2026-07-27: `npm run verify:supabase` **28/28 PASS** / `npm run e2e:local` **26/26 PASS** / `npm run e2e:auth` **19/19 PASS** / Vitest **55/55 PASS**。B10-refresh 追加前の 2026-07-26 実測は e2e:local 24/24 を 2 回連続 / e2e:auth 17/17）。26 件の内訳は **既存 E2E 7 + auth setup 1 + 認証済み E2E 18（AUTH-E2E-12..29）**で、auth setup は業務テスト 18 件とは別に数える。**同一の検証は CI でも成立**（GitHub Actions `Supabase local E2E` Run #1 / run ID `30205025523`・success。`verify:supabase` **28/28 PASS** / `e2e:local` **24/24 PASS**（当時の全件）。§7.2。B10-refresh を含む push 後は新たな run が起動予定・実走行は未実施）。
 - **AUTH-12..16（ロール別認可 / 他法人 ID 拒否 / invited・suspended・left 状態別拒否の認証済みセッション E2E）は SUPABASE_LOCAL_PASS**（§7.1 / test-cases.md §5.1・B17）。**限界: Phase 1 に ORGANIZATION_ADMIN 専用の HTTP ルートが無いため、ORGANIZATION_ADMIN と SALES_USER の管理操作差分は HTTP 層では未検証。DB 層のロール差分は PG harness で検証済みであり、HTTP 層で検証できるロール境界は SYSTEM_ADMIN 境界のみ。**
 - **B13-HTTP（Next.js Server Action 経由の実 HTTP 失敗監査経路）は SUPABASE_LOCAL_PASS**（§5・AUTH-E2E-26/27）。旧記述にあった「`failure-audit write failed` は B13-HTTP の既知ログ」という注記は、実装により解消したため削除した。実測（2026-07-26）では AUTH-E2E-25 / 27 とも `refused_by_guard` の warn のみで、`failure-audit write failed` は出力されない。
-- ただし以下 3 分類は **PENDING**（PASS 扱いにしない・Phase 1 完了を妨げない追加検証バックログ / phase1-validation.md §2）:
-  - B10-refresh（middleware token refresh の強制。期限切れ/間近トークンの強制手段が未整備）
+- **B10-refresh（middleware token refresh の強制検証）は SUPABASE_LOCAL_PASS**（§7.1 / test-cases.md §7 B10-refresh・AUTH-E2E-28/29。Mac 2026-07-27）。
+- ただし以下 2 分類は **PENDING**（PASS 扱いにしない・Phase 1 完了を妨げない追加検証バックログ / phase1-validation.md §2）:
   - AUTH-11 実機（DB/RLS 障害を「所属なし」と区別し /error へ振り分ける経路の実機確認。判定ロジックは実装・unit 検証済み）
   - Magic Link 有効期限の境界検証（期限切れリンクの時間経過を伴う検証。強制手段が未整備）
 - npm audit の high severity 12 件は、上記テストの PENDING とは**別枠**のセキュリティ負債として管理する（`npm audit fix` / `--force` / `--legacy-peer-deps` は使わない）。
