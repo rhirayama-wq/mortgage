@@ -36,6 +36,9 @@ $PSQL -d "$DB" -f "$HERE/01_test_helpers.sql"
 echo "== migration 0001 (ON_ERROR_STOP) =="
 $PSQL -d "$DB" -f "$REPO/app/supabase/migrations/0001_phase1_identity_org_rls.sql"
 
+echo "== migration 0002 (Phase 2A-1 customer cases, ON_ERROR_STOP) =="
+$PSQL -d "$DB" -f "$REPO/app/supabase/migrations/0002_phase2a_customer_cases.sql"
+
 echo "== seed (fictional bootstrap) =="
 $PSQL -d "$DB" -f "$REPO/app/supabase/seed.sql"
 
@@ -190,6 +193,9 @@ SYSADMINS=$($PSQL_Q -d "$DB" -t -A -c \
   "select count(*) from public.user_profiles where system_role='SYSTEM_ADMIN'")
 [ "$SYSADMINS" = "1" ] || { echo "TEST FAIL: CONC-02 remaining sysadmins=$SYSADMINS"; exit 1; }
 echo "CONC-02 PASSED"
+
+echo "== 40 Phase 2A-1 customer-case tests =="
+$PSQL -d "$DB" -f "$HERE/40_phase2a_customer_cases.sql"
 
 echo ""
 echo "==================================================="
