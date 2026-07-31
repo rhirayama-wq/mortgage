@@ -93,3 +93,10 @@ scripts/pg-harness/... (psql による SQL レベル検証)
 middleware Cookie 維持 / route group・layout 認可 / membership 取得エラー処理 / signout POST 化 /
 AUTH テスト追加 / typecheck / lint / unit / production build / （Docker 環境が用意でき次第）実Supabase検証。
 報告は「実装済み / PGハーネス検証済み / 実Supabaseローカル検証済み / 未検証 / 本番前残リスク」を明確に分ける。
+
+## 追記: Phase 2A-1（顧客案件の DB 土台）実装
+Phase 1（認証・法人・RLS・監査）は完了状態を維持する（本追記は Phase 2A-1 の追加）。
+migration `0002_phase2a_customer_cases.sql`（append-only・local Supabase のみ）で customer_cases /
+case_applicants / case_applicant_profiles(PII 分離) / case_invitations / case_participants と、
+RLS・SECURITY DEFINER 業務関数・監査・PG harness テストを追加。UI・メール送信・Magic Link 発行・
+入力フォームは 2A-2 で実装する。詳細は data-model.md / security.md §10 / test-cases.md Phase 2A-1。

@@ -77,3 +77,25 @@ UPDATE/DELETE はトリガーで全ロール拒否（superuser 含む）。
 案件: customer_cases ＋子テーブル（全て organization_id ＋ RLS）。
 検索: mortgage_searches / mortgage_search_results / mortgage_search_result_rules（スナップショット再現）。
 単位: 金額=BIGINT 円 `*_yen` / 料率=整数 bps `*_bps`。
+
+## Phase 2A-1（実装済み: 0002_phase2a_customer_cases.sql）— 顧客案件の土台
+基準: `app/supabase/migrations/0002_phase2a_customer_cases.sql`（実ファイルが正）。診断値（融資承認確率・借入可能額）はモゲチェック側 API が算出し、本フェーズでは扱わない。
+
+### enum
+- `customer_case_status`: draft, invited, opened, inputting, cancelled, expired（将来状態は未追加）
+- `case_applicant_type`: primary, co_applicant / `case_applicant_status`: active, removed
+- `case_invitation_status`: invited, accepted, expired, cancelled
+- `case_participant_role`: primary_applicant, co_applicant
+
+### テーブル
+- **customer_cases**: organization_id(不変・テナント) / assigned_membership_id(不変・当該org active SALES_USER|ORGANIZATION_ADMIN) / status / case_name / desired_price_yen(BIGINT円) / created_by。hard delete 禁止（status=cancelled）。guard `customer_case_guard` が不変列・許容遷移を二重防御。
+- **case_applicants**: 主/共同を同一テーブル。case_id/applicant_type 不変。1案件 primary 最大1（partial unique index）。
+- **case_applicant_profiles**: PII（氏名/カナ/生年月日/email/電話/郵便/住所）を分離（1:1）。監査/URL/ログへ複製しない。業務関数経由で書込。
+- **case_invitations**: token/Magic Link URL は保存しない。invited_email は lower(btrim) 正規化。applicant ごと invited は1件（partial unique）。correlation_id 一意で冪等。accepted/cancelled/expired は終端。
+- **case_participants**: 認証ユーザー↔申込者（顧客は org 非所属可）。applicant ごと1参加者（unique）。作成のみ（guard が update/delete 禁止＝付替え不可）。
+
+### RLS（SELECT のみ・書込は業務関数のみ）
+customer_cases: participant または staff(app_can_staff_access_case=assigned active agent / 当該org ORGANIZATION_ADMIN / SYSTEM_ADMIN)。case_applicants/PII: 顧客は自分の申込者のみ、スタッフは案件の全申込者（顧客は共同申込者PII不可視）。case_invitations: スタッフのみ。case_participants: 本人 or スタッフ。helper は SECURITY DEFINER・search_path 固定。
+
+### 業務関数（SECURITY DEFINER・監査付き・advisory lock 815002=法人/815003=案件）
+app_create_customer_case / app_invite_case_applicant / app_accept_case_invitation（本人メール一致必須・membership 非要求）/ app_add_case_participant（内部）/ app_transition_customer_case_status。監査 action: customer_case.created / case_applicant.created / case_invitation.created / case_invitation.accepted / case_participant.added / customer_case.status_changed（PII を metadata に入れない）。

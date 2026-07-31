@@ -383,3 +383,11 @@ job `Supabase local stack (verify:supabase + e2e:local)` = success（約5分00�
 > commit `21bf31b`・success。`verify:supabase` 28/28・`e2e:local` 24/24（当時の全件）。§7.1）。
 > **結論: Phase 1 の機能実装・主要実機検証・CI 実走行（既存 CI と Supabase local E2E の両方）は完了。
 > 上記 2 分類は Phase 1 完了を妨げない追加検証バックログとして継続管理し、PASS 扱いにしない。Phase 2 は未着手。**
+
+## Phase 2A-1 テスト（PG_HARNESS — Mac 実機 PENDING / 本環境は DB 未起動）
+PG harness（`scripts/pg-harness/40_phase2a_customer_cases.sql`、run.sh 末尾に配線）:
+- RLS: P2A-RLS-01 顧客は自案件のみ・他 org 不可視 / -02 顧客は自分の申込者 PII のみ（共同申込者 PII 不可視） / -03 assigned 営業可視・未担当営業不可視 / -04 ORG_ADMIN 自 org 可視・他 org 不可視 / -05 suspended 営業は担当案件を失う / -06 anon・JWTなしは不可視。
+- 業務関数: P2A-FN-01 他 org 作成拒否 / -02 無効 assigned membership 拒否 / -03 非スタッフ招待拒否 / -04 メール不一致受諾拒否 / -05 二重受諾の冪等（重複 participant なし） / -06 期限切れ招待拒否 / -07 未許可遷移拒否・許可遷移成功 / -08 直接 INSERT/UPDATE/DELETE 拒否。
+- 監査/テナント: P2A-AUD-01 成功操作で監査作成・metadata に PII なし / P2A-TEN-01 同名 case_name でも org 越境なし。
+- unit（Vitest, `src/lib/customer-cases/status.test.ts`）: P2A-UNIT-01/02/03 状態遷移・guard・エラー分類。
+実行: Mac で `supabase db reset`（local）＋ `npm run test:db`（PG harness）＋ `npm run test`（Vitest）。**本クラウド環境は Docker/Supabase/psql 不在のため DB 実行は PENDING。**

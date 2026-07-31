@@ -131,3 +131,11 @@ EXECUTE は public/anon から revoke。トリガー関数・内部関数（app_
 - npm audit の high severity 12 件は、上記テストの PENDING とは**別枠**のセキュリティ負債として管理する（`npm audit fix` / `--force` / `--legacy-peer-deps` は使わない）。
 - Magic Link の受信および使用済みリンクの再利用拒否は GoTrue local で確認済み（`npm run e2e:local` B8 PASS）。有効期限の境界値・期限切れリンクの時間経過を伴う追加検証は未実施
 - 初回 SYSTEM_ADMIN の本番ブートストラップ手順は運用手順書化が必要（app_bootstrap_first_system_admin を migration 管理経路で1回実行）
+
+## 10. Phase 2A-1 顧客案件のセキュリティ（追加 — 0002 migration）
+本節は Phase 2A-1（顧客案件・申込者・招待・参加者）の追加であり、§1–§9（Phase 1）を変更しない。
+- **テナント/顧客/営業の三層境界**: RLS は organization_id（テナント）＋ case_participants（顧客本人）＋ assigned active membership（担当営業）で制御。ORGANIZATION_ADMIN は自 org 全案件、SYSTEM_ADMIN は既存判定。SELECT のみ RLS で許可し、**書込ポリシーは置かず SECURITY DEFINER 業務関数のみ**。
+- **PII 分離**: 氏名・生年月日・連絡先・住所は case_applicant_profiles に分離。顧客は自分の申込者 PII のみ可視、共同申込者 PII は不可視。**監査 metadata / URL / ログへ PII・token・Magic Link URL を出さない**。
+- **顧客認証**: 顧客は organization membership を持たなくてよい。招待受諾は Supabase Auth が所有するミラー email（user_profiles.email）と invited_email(lower(btrim)) の一致でのみ成立（クライアント申告 email は信用しない）。token は DB に保存しない。
+- **冪等性・並行**: advisory lock（815002 法人 / 815003 案件）→ 冪等短絡（correlation の成功監査 / participant unique）→ 認可再確認 → FOR UPDATE → 更新 → 行数確認 → 監査。二重受諾は重複 participant を作らない。
+- **fail closed / 二重防御**: guard トリガが hard delete・不変列変更・未許可遷移を拒否。EXECUTE は public から revoke し、RLS helper と公開業務関数のみ authenticated へ grant、内部関数（app_add_case_participant / app_prior_success_resource）は誰にも grant しない。service role へ広範 GRANT を追加しない。
