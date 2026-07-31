@@ -136,3 +136,12 @@ Supabase の鍵をリポジトリ Secrets に置かない。
 本番 Supabase への接続 / 本番 Magic Link 送信 / 実顧客データ・実在金融機関の
 非公開条件の投入 / service role key の NEXT_PUBLIC_ 設定。
 テストデータは必ず fictional / test only を明記。
+
+## Loan Checker MoC（操作可能なデモ・本番機能ではない）
+経営/営業/UX 評価用の操作可能なデモ「モゲチェック Loan Checker」を
+`app/src/app/(moc)/loan-checker/**` に同梱している（専用ブランチ `moc/loan-checker`）。
+
+- 起動: `cd app && npm run dev` → ログイン後 `/loan-checker` を開く（認証済みユーザーのみ）。
+- 架空データ（`@example.test`）のみ。信用情報機関・eKYC・金融機関・モゲチェック本番基盤とは未接続。
+- 既存の認証・認可・middleware・migration・RLS・RPC・Supabase config・依存関係は変更していない。
+- 詳細・デモ手順・未実装事項・本番化要件は **docs/loan-checker-moc.md** を参照。
