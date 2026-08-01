@@ -391,3 +391,36 @@ PG harness（`scripts/pg-harness/40_phase2a_customer_cases.sql`、run.sh 末尾�
 - 監査/テナント: P2A-AUD-01 成功操作で監査作成・metadata に PII なし / P2A-TEN-01 同名 case_name でも org 越境なし。
 - unit（Vitest, `src/lib/customer-cases/status.test.ts`）: P2A-UNIT-01/02/03 状態遷移・guard・エラー分類。
 実行: Mac で `supabase db reset`（local）＋ `npm run test:db`（PG harness）＋ `npm run test`（Vitest）。**本クラウド環境は Docker/Supabase/psql 不在のため DB 実行は PENDING。**
+## Phase 2A-2a テストケース
+
+### PG ハーネス（scripts/pg-harness/50_phase2a2_profile.sql・run.sh 組込・PENDING(Mac): docker/psql 必要）
+- P2A2-01: 本人(primary)が基本情報保存でき opened→inputting 遷移／値保存
+- P2A2-02: 共同申込者は主申込者 PII を更新不可（not_authorized）
+- P2A2-03: 非 participant 顧客は更新不可（not_authorized）
+- P2A2-04: 不正メール / 未来生年月日は拒否（invalid_profile_email / invalid_profile_birth_date）
+- P2A2-05: 監査に PII が入らない（フィールド名のみ）
+- P2A2-06: 認証済みユーザーの直接 UPDATE/INSERT 拒否（insufficient_privilege）
+- P2A2-07: 被招待者本人は自分の invited 招待を SELECT 可・他人/受諾済みは不可視
+- P2A2-08: cancelled 案件では更新不可（customer_case_not_inputtable）
+
+### Unit（app/src/lib/customer-cases/profile.test.ts・PENDING(Mac): vitest は darwin バイナリ）
+- P2A2-UNIT-01..04: 基本情報バリデーション（空欄可・形式/長さ・DB 行マッピング・入力開始判定）
+
+### E2E（app/e2e/authenticated/customer-case.spec.ts・SUPABASE_PENDING）
+- P2A2-E2E-01: 営業が案件作成→顧客招待→顧客受諾→基本情報オートセーブ→再読込で保持
+- P2A2-E2E-02: 顧客(membership なし)は /cases 不可(/no-access)・ポータルは開ける
+
+### 実行状況
+- typecheck: PASS（Mac VM tsc --noEmit EXIT=0）
+- vitest / next build / PG harness / supabase db reset / e2e / verify:supabase: PENDING(Mac 実機)
+
+## Phase 2A-2b テストケース
+
+### PG ハーネス（scripts/pg-harness/60_phase2b_partner_loans.sql・PENDING(Mac)）
+- P2B-01 作成(draft/version1/current) / P2B-02 SALES 作成不可 / P2B-03 SALES draft 不可視・有効化後可視 / P2B-04 他org 不可視・更新不可 / P2B-05 顧客は全テーブル不可視 / P2B-06 直接 DML 拒否 / P2B-07 version 競合検知・新version append・過去保持 / P2B-08 監査に内部メモ非含有 / P2B-09 無効化で有効一覧から除外 / P2B-10 確認で last_confirmed_at 更新。
+
+### Unit（partner-loans/validation.test.ts, errors.test.ts・PENDING(Mac)）
+- P2B-UNIT-01..04 バリデーション（bps/円変換・必須・範囲・URL）、P2B-UNIT-ERR-01..02 エラー写像。
+
+### E2E（app/e2e/authenticated/partner-loans.spec.ts・SUPABASE_PENDING）
+- P2B-E2E-01 ORG_ADMIN 登録→有効化→新version、SALES 閲覧のみ（登録画面不可）、他org 不可視。

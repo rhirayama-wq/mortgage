@@ -139,3 +139,33 @@ EXECUTE は public/anon から revoke。トリガー関数・内部関数（app_
 - **顧客認証**: 顧客は organization membership を持たなくてよい。招待受諾は Supabase Auth が所有するミラー email（user_profiles.email）と invited_email(lower(btrim)) の一致でのみ成立（クライアント申告 email は信用しない）。token は DB に保存しない。
 - **冪等性・並行**: advisory lock（815002 法人 / 815003 案件）→ 冪等短絡（correlation の成功監査 / participant unique）→ 認可再確認 → FOR UPDATE → 更新 → 行数確認 → 監査。二重受諾は重複 participant を作らない。
 - **fail closed / 二重防御**: guard トリガが hard delete・不変列変更・未許可遷移を拒否。EXECUTE は public から revoke し、RLS helper と公開業務関数のみ authenticated へ grant、内部関数（app_add_case_participant / app_prior_success_resource）は誰にも grant しない。service role へ広範 GRANT を追加しない。
+## Phase 2A-2a 追記（顧客基本情報の保存 / 被招待者の招待可視化）
+
+基準: 0003_phase2a2_applicant_profile.sql / (customer-app) 配下の画面・Server Action。
+
+### 認証・認可
+- 顧客は auth.users だが organization_memberships を持たない。案件アクセスは case_participants 経由（RLS）。
+- 顧客ポータル layout は「認証のみ」を要求（requireAuthenticatedUser）。membership 不要。
+- 案件単位の本人性は requireCustomerCaseParticipant（自分の participant 行から申込者特定）。未参加/不存在は notFound、DB/整合性障害は /error（fail closed。未参加と混同しない）。
+- 基本情報の書込は app_update_own_applicant_profile のみ。app_participant_owns_applicant で本人のみ許可。
+
+### PII 保護
+- PII は URL・ログ・監査 metadata に出さない。オートセーブは Server Action 引数(POST body)で送信しクエリ文字列に載せない。監査は変更フィールド名のみ。エラーログは分類コードのみ（値なし）。
+
+### 被招待者の招待可視化（RLS）
+- case_invitations_select_invitee: 被招待者本人が status='invited' かつ invited_email 一致の自分宛招待のみ SELECT 可。案件本文は participant になるまで不可視のため案件内容は漏れない。
+
+### 提携ローンのテナント分離方針（Phase 2A-2b・設計方針）
+- organization 提携ローンは org 固有の商用条件（機微データ）。organization_id ＋ RLS で他 org から不可視。
+- 承認確率はモゲチェック API が算出しローンチェッカーは算出しない（標準・提携で共通）。
+- 診断時点の商品条件をスナップショット保存し、過去診断を当時条件で再現する。
+
+## Phase 2A-2b 追記（提携ローンのテナント分離・権限・監査）
+
+- テナント分離: organization 固有の商用条件。他 org から存在確認不可（RLS 0 件・情報差なし）。organization_id はクライアント任せにせず RPC/認証から導出。
+- 権限: ORG_ADMIN のみ作成/更新(新version)/有効化/無効化/確認。SALES は自 org の有効かつ有効期間内の商品の安全列のみ閲覧（内部メモ不可視）。顧客は管理テーブル不可。suspended/left は不可（app_require_org_admin_membership が status='active' 必須）。SYSTEM_ADMIN は既存 Phase 1 権限モデルに従い新 bypass を作らない。
+- 書込: 直接 INSERT/UPDATE/DELETE 禁止（テーブルへ DML GRANT なし）。SECURITY DEFINER 業務関数のみ・search_path 固定・public execute 剥奪・authenticated へ最小 GRANT。service role は一般画面で不使用。advisory lock 815004(org)/815005(loan)。
+- version 競合: expected_current_version_id で楽観ロック（同一 tx）。外部 URL: application_url は https のみ（CHECK + RPC 再検証）。
+- 監査: partner_loan.created / version_created / activated / deactivated / confirmed。metadata は entity/org/actor/membership/version_number/status 遷移のみ。内部審査メモ・顧客向け注意事項・商品条件全文・外部 API 本文は入れない。
+- エラー: 安全コードへ写像（partner_loan_not_found/inactive/version_conflict/invalid_period/invalid_url/duplicate_key ほか）。SQLSTATE/SQL/テーブル名/RPC 内部名/stack を画面へ出さない。
+- 既知の UX 割り切り（セキュリティ・整合性の問題ではない）: 提携ローン登録/更新フォームは validation エラー時に入力値を保持せず ?e=validation / ?e=save で戻す。URL query に入力値・内部メモは載せない。

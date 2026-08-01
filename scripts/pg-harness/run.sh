@@ -39,6 +39,12 @@ $PSQL -d "$DB" -f "$REPO/app/supabase/migrations/0001_phase1_identity_org_rls.sq
 echo "== migration 0002 (Phase 2A-1 customer cases, ON_ERROR_STOP) =="
 $PSQL -d "$DB" -f "$REPO/app/supabase/migrations/0002_phase2a_customer_cases.sql"
 
+echo "== migration 0003 (Phase 2A-2a applicant profile, ON_ERROR_STOP) =="
+$PSQL -d "$DB" -f "$REPO/app/supabase/migrations/0003_phase2a2_applicant_profile.sql"
+
+echo "== migration 0004 (Phase 2A-2b partner loans, ON_ERROR_STOP) =="
+$PSQL -d "$DB" -f "$REPO/app/supabase/migrations/0004_phase2b_partner_loans.sql"
+
 echo "== seed (fictional bootstrap) =="
 $PSQL -d "$DB" -f "$REPO/app/supabase/seed.sql"
 
@@ -196,6 +202,12 @@ echo "CONC-02 PASSED"
 
 echo "== 40 Phase 2A-1 customer-case tests =="
 $PSQL -d "$DB" -f "$HERE/40_phase2a_customer_cases.sql"
+
+echo "== 50 Phase 2A-2a profile / invitee tests =="
+$PSQL -d "$DB" -f "$HERE/50_phase2a2_profile.sql"
+
+echo "== 60 Phase 2A-2b partner-loan tests =="
+$PSQL -d "$DB" -f "$HERE/60_phase2b_partner_loans.sql"
 
 echo ""
 echo "==================================================="

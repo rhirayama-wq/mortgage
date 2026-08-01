@@ -99,3 +99,60 @@ customer_cases: participant または staff(app_can_staff_access_case=assigned a
 
 ### 業務関数（SECURITY DEFINER・監査付き・advisory lock 815002=法人/815003=案件）
 app_create_customer_case / app_invite_case_applicant / app_accept_case_invitation（本人メール一致必須・membership 非要求）/ app_add_case_participant（内部）/ app_transition_customer_case_status。監査 action: customer_case.created / case_applicant.created / case_invitation.created / case_invitation.accepted / case_participant.added / customer_case.status_changed（PII を metadata に入れない）。
+## Phase 2A-2a 追記（0003_phase2a2_applicant_profile.sql）
+
+基準: `app/supabase/migrations/0003_phase2a2_applicant_profile.sql`（実ファイルが正）。
+本フェーズは新規テーブルを追加しない。既存 `case_applicant_profiles`(PII, 0002) を顧客本人が
+更新できる業務関数と、被招待者による自招待の可視化のみを追加する。
+
+### 追加関数
+- `app_current_user_email()`: RLS 用に現在ユーザーの正規化メールを返す（SECURITY DEFINER・STABLE）。
+- `app_update_own_applicant_profile(applicant_id, full_name, full_name_kana, birth_date, email, phone, postal_code, address, correlation_id)`: 顧客本人が基本情報(PII)を保存（オートセーブ、last-write-wins）。opened→inputting 遷移。認可は `app_participant_owns_applicant`。監査は変更フィールド名のみ。
+
+### 追加 RLS ポリシー
+- `case_invitations_select_invitee`: 被招待者本人（status='invited' かつ invited_email = app_current_user_email()）が自分宛招待を SELECT 可。案件本文は participant になるまで不可視。
+
+### 書込経路
+- `case_applicant_profiles` への直接 UPDATE 権限は authenticated に付与しない。更新は業務関数のみ。
+- PII は監査 metadata / URL / ログへ出さない（監査は {"fields":[...変更列名]}）。
+
+## 標準ローンと organization 提携ローンの概念分離（Phase 2A-2b で実装・本フェーズ未実装）
+
+| 種別 | 管理主体 | テナント可視性 | 編集 |
+|---|---|---|---|
+| MFS 標準ローン | MFS / モゲチェック | 全 org 共有（読取） | org は編集不可 |
+| organization 提携ローン | 各不動産会社(org 管理者) | org 固有・他 org 不可視 | 当該 org 管理者のみ |
+
+標準ローンは CLAUDE.md §12 の共通マスタ（lenders / loan_products / loan_product_versions / product_rules、organization_id なし）に対応。提携ローンは organization_id ＋ RLS でテナント分離。
+
+想定テーブル（Phase 2A-2b で定義・概念のみ）: lending_institutions / loan_products / organization_partner_loans(organization_id) / organization_partner_loan_versions / partner_loan_eligibility_rules。
+
+責任分界: 融資承認確率・借入可能額はモゲチェック API が算出し、ローンチェッカーは登録・管理・表示のみ（標準・提携で共通）。診断結果は標準/提携を区別せず公平に統合表示する。
+
+バージョン/スナップショット/分離: 提携ローン条件は版管理し、診断実行時点の条件を固定保存して過去診断を再現（§13/§15 に整合）。org 提携ローンは organization_id ＋ RLS で他社の商用条件が越境しないことを保証。
+
+## Phase 2A-2b 追記（0004_phase2b_partner_loans.sql・提携ローン基盤）
+
+基準: `app/supabase/migrations/0004_phase2b_partner_loans.sql`（実ファイルが正）。
+
+### テーブル
+- `lending_institutions`（金融機関マスタ・共有参照・organization_id なし）: id, stable_key(unique), display_name, status。架空データのみ。find-or-create（stable_key で冪等）。
+- `organization_partner_loans`（org 固有の論理エンティティ）: organization_id(不変), lending_institution_id(不変), stable_key(org内 unique), display_name, status(draft/active/inactive), current_version_id, last_confirmed_at, created_by/updated_by_membership_id。hard delete 禁止（inactive 化）。
+- `organization_partner_loan_versions`（append-only・完全 immutable）: version_number(単調増加, unique(loan,version)), 商品条件一式（金利=bps・金額=円・LTV=bps・物件/雇用種別=text[]・団信/開示/内部メモ=text・application_url=https・valid_from/until・confirmed_at）。UPDATE/DELETE 禁止。
+
+### enum
+partner_loan_status(draft/active/inactive), lending_institution_status(active/inactive), partner_interest_rate_type(variable/fixed/fixed_period), partner_handling_fee_type(fixed_yen/rate_bps)。
+
+### RLS（テナント分離）
+- lending_institutions: 何らかの active メンバーのみ SELECT（顧客・非メンバー不可視）。
+- organization_partner_loans: 自 org ORG_ADMIN=全 status / SALES=active のみ。
+- versions: 親ローンが admin 可視のときのみ（内部メモを含むため管理者限定）。SALES/顧客向けの安全な列は定義者関数 app_list_org_active_partner_loans（内部メモ非含有・有効期間内のみ）で提供。
+- 他 org は全テーブル不可視（0 件・not found と not authorized の情報差を漏らさない）。
+
+### version 方針・診断スナップショット（将来）
+- 条件変更は新 version を append し過去 version を上書きしない。current_version_id で現行を明示。更新 RPC は expected_current_version_id を取り、不一致で partner_loan_version_conflict。
+- 将来の診断結果保存（本フェーズ未実装・YAGNI により空テーブルは追加しない）: case_id, applicant_id, partner_loan_id, partner_loan_version_id, correlation_id, モゲチェック商品識別子, 診断日時, 承認確率, 借入可能見込み額, 想定金利, 結果有効期限, scoring model version, response status。診断時点の version を参照して当時条件で再現する。
+
+### 標準ローンとの概念分離
+- 標準ローン=MFS/モゲチェック管理（共通マスタ §12）、提携ローン=organization 管理。両方の承認確率をモゲチェック API が算出し、ローンチェッカーは結果を表示のみ（算出しない）。提携だからと上位固定しない。将来の表示順は承認確率・金利・費用・借入可能額・条件適合性等を総合。顧客向けに商品区分を明示。最終審査は金融機関。診断結果は保証ではない。
+- 今回未実装: 診断 API 実接続・承認確率計算・標準ローン商品マスタ本格実装・統合診断画面。
