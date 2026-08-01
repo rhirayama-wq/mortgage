@@ -23,6 +23,10 @@ import {
   isBasicProfileStarted,
   type BasicApplicantProfileInput,
 } from "./profile";
+import {
+  toEmploymentIncomeInput,
+  type EmploymentIncomeInput,
+} from "./employment-income";
 
 function asStatus(v: unknown): CustomerCaseStatus {
   if (!isCustomerCaseStatus(v)) {
@@ -213,6 +217,10 @@ export interface StaffApplicantProgress {
   invitationExpiresAt: string | null;
   accepted: boolean;
   basicInfoStarted: boolean;
+  // Phase 2A-3a: 勤務・収入の進捗（フラグ + 最終更新のみ。値は一切含めない）。
+  employmentIncomeStarted: boolean;
+  employmentIncomeComplete: boolean;
+  employmentIncomeUpdatedAt: string | null;
 }
 
 export interface StaffCaseDetail {
@@ -315,6 +323,31 @@ export async function loadStaffCaseDetail(
     }
   }
 
+  // Phase 2A-3a: 勤務・収入の進捗はスタッフへ「値なしの safe RPC」でのみ提供する
+  // （値テーブルの直接 SELECT はスタッフに許可していない。SYSTEM_ADMIN は RPC 側で除外）。
+  const eiByApplicant = new Map<
+    string,
+    { started: boolean; complete: boolean; updatedAt: string | null }
+  >();
+  const eiRes = await supabase.rpc("app_list_case_employment_income_progress", {
+    p_case_id: caseId,
+  });
+  if (eiRes.error) {
+    throw new DataAccessError("failed to load employment/income progress");
+  }
+  for (const row of (eiRes.data as unknown[] | null) ?? []) {
+    const r = row as Record<string, unknown>;
+    eiByApplicant.set(String(r.applicant_id), {
+      started:
+        Boolean(r.has_employment_input) || Boolean(r.has_income_input),
+      complete: Boolean(r.is_required_input_complete),
+      updatedAt:
+        typeof r.updated_at === "string" && r.updated_at.length > 0
+          ? r.updated_at
+          : null,
+    });
+  }
+
   const progress: StaffApplicantProgress[] = applicants.map((a) => {
     const id = String(a.id);
     if (!isCaseApplicantType(a.applicant_type)) {
@@ -322,6 +355,7 @@ export async function loadStaffCaseDetail(
     }
     const profile = profileByApplicant.get(id);
     const inv = invByApplicant.get(id);
+    const ei = eiByApplicant.get(id);
     return {
       applicantId: id,
       applicantType: a.applicant_type,
@@ -331,6 +365,9 @@ export async function loadStaffCaseDetail(
       invitationExpiresAt: inv?.expiresAt ?? null,
       accepted: acceptedApplicants.has(id),
       basicInfoStarted: profile ? isBasicProfileStarted(profile) : false,
+      employmentIncomeStarted: ei?.started ?? false,
+      employmentIncomeComplete: ei?.complete ?? false,
+      employmentIncomeUpdatedAt: ei?.updatedAt ?? null,
     };
   });
 
@@ -531,5 +568,95 @@ export async function loadCustomerCaseView(
     applicantId,
     applicantType: applicantRes.data.applicant_type,
     profile: toBasicProfileInput(profileRes.data),
+  };
+}
+
+export interface CustomerEmploymentIncomeView {
+  caseId: string;
+  caseName: string;
+  status: CustomerCaseStatus;
+  applicantId: string;
+  applicantType: CaseApplicantType;
+  employmentIncome: EmploymentIncomeInput;
+  /** 完了判定は DB 純粋関数が唯一の正（app_own_employment_income_progress）。 */
+  isComplete: boolean;
+  /** 不足フィールドコード（DB 由来。値は含まない）。 */
+  missingFields: string[];
+}
+
+/**
+ * 顧客本人の勤務・収入ビュー（自分の申込者の財務値のみ・RLS SELECT で本人限定）。
+ * 完了/不足は定義者 RPC から取得（雇用形態別ルールは DB 側が唯一の正）。
+ * 参加していない/存在しない場合は null。
+ */
+export async function loadCustomerEmploymentIncome(
+  caseId: string,
+): Promise<CustomerEmploymentIncomeView | null> {
+  const supabase = await createSupabaseServerClient();
+
+  const partRes = await supabase
+    .from("case_participants")
+    .select("applicant_id")
+    .eq("case_id", caseId)
+    .limit(1)
+    .maybeSingle();
+  if (partRes.error) throw new DataAccessError("failed to load participant");
+  if (!partRes.data) return null;
+  const applicantId = String(partRes.data.applicant_id);
+
+  const caseRes = await supabase
+    .from("customer_cases")
+    .select("id, case_name, status")
+    .eq("id", caseId)
+    .maybeSingle();
+  if (caseRes.error) throw new DataAccessError("failed to load customer case");
+  if (!caseRes.data) return null;
+
+  const applicantRes = await supabase
+    .from("case_applicants")
+    .select("id, applicant_type, status")
+    .eq("id", applicantId)
+    .maybeSingle();
+  if (applicantRes.error) throw new DataAccessError("failed to load applicant");
+  if (!applicantRes.data) return null;
+  if (!isCaseApplicantType(applicantRes.data.applicant_type)) {
+    throw new DataIntegrityError("unexpected applicant_type");
+  }
+
+  // 値は本人のみ SELECT 可（RLS: caei_select_own）。未作成なら空。
+  const eiRes = await supabase
+    .from("case_applicant_employment_income")
+    .select(
+      "employer_name, employment_type, employment_started_on, annual_gross_income_yen, income_type",
+    )
+    .eq("applicant_id", applicantId)
+    .maybeSingle();
+  if (eiRes.error) {
+    throw new DataAccessError("failed to load employment/income");
+  }
+
+  // 完了/不足は DB 純粋関数（RPC）が唯一の正。
+  const progRes = await supabase.rpc("app_own_employment_income_progress", {
+    p_applicant_id: applicantId,
+  });
+  if (progRes.error) {
+    throw new DataAccessError("failed to load employment/income progress");
+  }
+  const progRow = ((progRes.data as unknown[] | null) ?? [])[0] as
+    | Record<string, unknown>
+    | undefined;
+  const missing = Array.isArray(progRow?.missing_fields)
+    ? (progRow?.missing_fields as unknown[]).map((v) => String(v))
+    : [];
+
+  return {
+    caseId: String(caseRes.data.id),
+    caseName: String(caseRes.data.case_name),
+    status: asStatus(caseRes.data.status),
+    applicantId,
+    applicantType: applicantRes.data.applicant_type,
+    employmentIncome: toEmploymentIncomeInput(eiRes.data),
+    isComplete: Boolean(progRow?.is_complete),
+    missingFields: missing,
   };
 }

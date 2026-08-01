@@ -27,6 +27,10 @@ export const CUSTOMER_CASE_ERROR_CODES = [
   "invalid_profile_email",
   "invalid_profile_birth_date",
   "invalid_profile_field",
+  // Phase 2A-3a: 勤務・収入情報(財務)保存
+  "invalid_employment_income_field",
+  "invalid_employment_started_on",
+  "invalid_annual_income",
 ] as const;
 
 export type CustomerCaseErrorCode = (typeof CUSTOMER_CASE_ERROR_CODES)[number];
@@ -93,6 +97,9 @@ export function toSafeCaseError(
     case "invalid_profile_email":
     case "invalid_profile_birth_date":
     case "invalid_profile_field":
+    case "invalid_employment_income_field":
+    case "invalid_employment_started_on":
+    case "invalid_annual_income":
     case "customer_case_not_open":
     case "customer_case_not_inputtable":
     case "customer_case_invalid_transition":

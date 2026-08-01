@@ -19,7 +19,9 @@ import {
 } from "./access";
 import {
   loadCustomerCaseView,
+  loadCustomerEmploymentIncome,
   type CustomerCaseView,
+  type CustomerEmploymentIncomeView,
 } from "../customer-cases/queries";
 
 type LoadResult =
@@ -83,6 +85,27 @@ export async function requireCustomerCaseParticipant(
   } catch (e) {
     console.error(
       "[customer-case] participant load failed:",
+      e instanceof Error ? `${e.name}` : "unknown",
+    );
+    redirect("/error");
+  }
+  if (!view) notFound();
+  return view;
+}
+
+/** 顧客本人の勤務・収入ビュー（本人性は RLS/RPC が担保・障害は /error）。 */
+export async function requireCustomerCaseEmploymentIncome(
+  caseId: string,
+): Promise<CustomerEmploymentIncomeView> {
+  await requireAuthenticated();
+  if (!isUuid(caseId)) notFound();
+
+  let view: CustomerEmploymentIncomeView | null;
+  try {
+    view = await loadCustomerEmploymentIncome(caseId);
+  } catch (e) {
+    console.error(
+      "[customer-case] employment-income load failed:",
       e instanceof Error ? `${e.name}` : "unknown",
     );
     redirect("/error");
