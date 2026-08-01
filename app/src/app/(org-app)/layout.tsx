@@ -4,6 +4,7 @@
  * （middleware の認証チェックだけに依存しない: CLAUDE.md §18）。
  */
 
+import Link from "next/link";
 import { requireOrgAccess } from "@/lib/auth/require";
 import { SignoutButton } from "@/components/signout-button";
 
@@ -17,11 +18,21 @@ export default async function OrgAppLayout({
   return (
     <div className="min-h-screen">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
-        <div className="flex items-baseline gap-3">
+        <div className="flex items-baseline gap-4">
           <span className="text-sm font-semibold">
             {organizationName ?? "所属法人"}
           </span>
-          <span className="text-xs text-slate-500">住宅ローン検索 (MVP)</span>
+          <nav className="flex items-center gap-3 text-xs text-slate-600">
+            <Link href="/cases" className="hover:text-slate-900 hover:underline">
+              案件
+            </Link>
+            <Link
+              href="/settings/partner-loans"
+              className="hover:text-slate-900 hover:underline"
+            >
+              提携ローン
+            </Link>
+          </nav>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-600">
