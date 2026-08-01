@@ -6,6 +6,8 @@
  *  1. 営業(active member)が案件を作成し、顧客を招待する
  *  2. 顧客が Magic Link ログイン後に招待を受諾する（organization membership なし）
  *  3. 顧客が自分の案件だけを閲覧し、基本情報をオートセーブする（再読込で保存が残る）
+ *  3b. 顧客が勤務・収入情報をオートセーブする（再読込で保存が残る・完了表示）
+ *  3c. スタッフは勤務・収入の「進捗」のみ見え、入力値（勤務先名等）は見えない
  *  4. 顧客は法人アプリ(/cases)へ入れない（membership が無い＝ /no-access）
  *
  * 設計:
@@ -100,6 +102,7 @@ test("P2A2-E2E-01: 営業が案件作成→顧客招待、顧客が受諾し基�
   // 作成成功で /cases/[uuid]?invited=1 へ遷移し、招待作成の成功が表示される（二重招待はしない）。
   await orgAMemberPage.waitForURL(/\/cases\/[0-9a-f-]{36}\?invited=1$/);
   await expect(orgAMemberPage.getByText("招待を作成しました。")).toBeVisible();
+  const caseId = new URL(orgAMemberPage.url()).pathname.split("/").pop() as string;
 
   // --- 顧客: ログイン→保留中招待を全て受諾 ---
   const { context, page } = await customerSignIn(browser, a, CUSTOMER_EMAIL);
@@ -132,9 +135,36 @@ test("P2A2-E2E-01: 営業が案件作成→顧客招待、顧客が受諾し基�
     // 再読込で保持されている（サーバー保存の確認）
     await page.reload();
     await expect(page.getByLabel("氏名", { exact: true })).toHaveValue("架空 花子");
+
+    // --- 勤務・収入情報のオートセーブ（2 ステップ导线の 2 番目） ---
+    await page.goto(`/customer/cases/${caseId}`);
+    await page.getByRole("link", { name: "勤務・収入情報を入力する" }).click();
+    await page.waitForURL(/\/employment-income$/);
+
+    await page.getByLabel("雇用形態").selectOption("full_time");
+    await page.getByLabel("勤務先名").fill("架空商事株式会社");
+    await page.getByLabel("入社年月").fill("2018-04");
+    await page.getByLabel("年収（額面・円）").fill("6000000");
+    await page.getByLabel("収入区分").selectOption("salary");
+    await page.getByRole("button", { name: "今すぐ保存" }).click();
+    await expect(page.getByTestId("autosave-status")).toContainText("保存しました");
+    await expect(page.getByTestId("employment-income-completeness")).toContainText(
+      "すべて入力",
+    );
+
+    // 再読込で保持されている
+    await page.reload();
+    await expect(page.getByLabel("勤務先名")).toHaveValue("架空商事株式会社");
   } finally {
     await context.close();
   }
+
+  // --- スタッフ側: 勤務・収入は「進捗」のみ見え、入力値は見えない ---
+  await orgAMemberPage.goto(`/cases/${caseId}`);
+  const staffEI = orgAMemberPage.getByTestId("staff-employment-income").first();
+  await expect(staffEI).toContainText("勤務・収入: 完了");
+  // 顧客が入力した勤務先名（値）はスタッフ画面に一切出ない。
+  await expect(orgAMemberPage.getByText("架空商事株式会社")).toHaveCount(0);
 });
 
 test("P2A2-E2E-02: 顧客(membership なし)は法人アプリ /cases に入れず /no-access、ポータルは開ける", async ({

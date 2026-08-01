@@ -45,6 +45,9 @@ $PSQL -d "$DB" -f "$REPO/app/supabase/migrations/0003_phase2a2_applicant_profile
 echo "== migration 0004 (Phase 2A-2b partner loans, ON_ERROR_STOP) =="
 $PSQL -d "$DB" -f "$REPO/app/supabase/migrations/0004_phase2b_partner_loans.sql"
 
+echo "== migration 0005 (Phase 2A-3a employment/income, ON_ERROR_STOP) =="
+$PSQL -d "$DB" -f "$REPO/app/supabase/migrations/0005_phase2a3a_employment_income.sql"
+
 echo "== seed (fictional bootstrap) =="
 $PSQL -d "$DB" -f "$REPO/app/supabase/seed.sql"
 
@@ -208,6 +211,9 @@ $PSQL -d "$DB" -f "$HERE/50_phase2a2_profile.sql"
 
 echo "== 60 Phase 2A-2b partner-loan tests =="
 $PSQL -d "$DB" -f "$HERE/60_phase2b_partner_loans.sql"
+
+echo "== 70 Phase 2A-3a employment/income tests =="
+$PSQL -d "$DB" -f "$HERE/70_phase2a3a_employment_income.sql"
 
 echo ""
 echo "==================================================="
