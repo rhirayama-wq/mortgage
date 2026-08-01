@@ -424,3 +424,14 @@ PG harness（`scripts/pg-harness/40_phase2a_customer_cases.sql`、run.sh 末尾�
 
 ### E2E（app/e2e/authenticated/partner-loans.spec.ts・SUPABASE_PENDING）
 - P2B-E2E-01 ORG_ADMIN 登録→有効化→新version、SALES 閲覧のみ（登録画面不可）、他org 不可視。
+
+## Phase 2A-3a テストケース
+
+### PG ハーネス（scripts/pg-harness/70_phase2a3a_employment_income.sql）
+- P2A3-01 本人が給与系フル入力で complete=true・opened→inputting / P2A3-02 完了判定が雇用形態別ルールに従う（full_time 勤務先欠落=incomplete、self_employed=income+区分で complete、unemployed=種別のみで complete、null 種別=incomplete） / P2A3-03 共同申込者・無関係顧客は他人の勤務収入を更新不可(not_authorized) / P2A3-04 不正入力を種別別安全コードで拒否(enum/未来入社年月/負年収) / P2A3-05 入社年月は月初へ正規化 / P2A3-06 スタッフ(担当営業/org admin)は safe RPC で進捗のみ・値テーブル直接 SELECT は 0 件 / P2A3-07 SYSTEM_ADMIN は進捗 0 件・値も不可視 / P2A3-08 他 org admin は進捗 0 件・値も不可視 / P2A3-09 直接 INSERT/UPDATE/DELETE 拒否 / P2A3-10 監査は初回作成+完了遷移のみ・毎回 autosave では書かず・財務値非含有 / P2A3-11 cancelled 案件では本人でも更新不可。
+
+### Unit（src/lib/customer-cases/employment-income.test.ts）
+- P2A3-UNIT-01..11 形式バリデーション（enum 所属・入社年月 YYYY-MM/未来/1900、年収 非負整数/範囲、勤務先名長さ）、DB 行マッピング(date→月/ bigint→文字列)、RPC 引数変換(YYYY-MM→YYYY-MM-01・円→number|null)、不足ラベル写像、進捗ラベル(未入力/入力中/完了)、型ガード。※ 雇用形態別の必須(complete)ルールは TS では検証しないことを UNIT-06 が保証。
+
+### E2E（app/e2e/authenticated/customer-case.spec.ts 拡張）
+- P2A2-E2E-01 に追記: 顧客が勤務・収入情報をオートセーブ→完了表示→再読込保持、スタッフ画面は「勤務・収入: 完了」等の進捗のみ表示し入力値(勤務先名)は表示しない。

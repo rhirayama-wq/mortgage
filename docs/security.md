@@ -169,3 +169,14 @@ EXECUTE は public/anon から revoke。トリガー関数・内部関数（app_
 - 監査: partner_loan.created / version_created / activated / deactivated / confirmed。metadata は entity/org/actor/membership/version_number/status 遷移のみ。内部審査メモ・顧客向け注意事項・商品条件全文・外部 API 本文は入れない。
 - エラー: 安全コードへ写像（partner_loan_not_found/inactive/version_conflict/invalid_period/invalid_url/duplicate_key ほか）。SQLSTATE/SQL/テーブル名/RPC 内部名/stack を画面へ出さない。
 - 既知の UX 割り切り（セキュリティ・整合性の問題ではない）: 提携ローン登録/更新フォームは validation エラー時に入力値を保持せず ?e=validation / ?e=save で戻す。URL query に入力値・内部メモは載せない。
+
+## Phase 2A-3a 追記（勤務・収入情報＝財務 PII の可視性・権限・監査）
+
+- 値の可視性: `case_applicant_employment_income` の SELECT は「顧客本人(participant)」のみ（RLS `caei_select_own` = app_participant_owns_applicant）。スタッフ(SALES_USER/ORGANIZATION_ADMIN)・SYSTEM_ADMIN への直接 SELECT ポリシーは置かない。authenticated への GRANT は SELECT のみ（INSERT/UPDATE/DELETE は付与しない）。
+- スタッフ進捗: 値を返さない safe RPC `app_list_case_employment_income_progress` のみ（フラグ + updated_at）。認可は「当該案件 org の active ORGANIZATION_ADMIN、または当該案件の active 担当営業」。`app_can_staff_access_case` は SYSTEM_ADMIN も許可するため流用せず、SYSTEM_ADMIN を除外したガードをインラインで用いる。非該当は 0 件（情報差を出さない）。
+- SYSTEM_ADMIN: 値テーブル・進捗 RPC のいずれも不可（意図的に除外）。
+- 書込: 直接 DML 禁止。SECURITY DEFINER 業務関数のみ・search_path 固定・public/anon execute 剥奪・authenticated へ最小 GRANT。純粋関数・ガード関数は public/anon/authenticated/service_role から execute 剥奪（定義者コンテキスト専用）。service role は一般画面で不使用。
+- 案件状態: opened/inputting 以外は更新不可（customer_case_not_inputtable）。申込者 active 必須。初回入力で opened→inputting。
+- 日付: 入社年月は月初へ正規化。未来日は RPC + TS で拒否（CHECK は下限のみ・current_date 不使用）。
+- 監査: `case_applicant_employment_income.created`(初回作成) と `.updated`(完了状態の遷移 incomplete↔complete)のみ記録し、毎回の autosave では書かない。metadata は applicant_id(resource_id)/changed_field_names/completeness_transition/correlation_id のみ。入力値/財務/PII は一切入れない。
+- エラー: 安全コード（invalid_employment_income_field / invalid_employment_started_on / invalid_annual_income / customer_case_not_inputtable / applicant_not_active / not_authorized 等）へ写像。SQLSTATE/SQL/テーブル名/RPC 内部名は画面へ出さない。財務値はログ/URL/エラーメッセージへ出さない。

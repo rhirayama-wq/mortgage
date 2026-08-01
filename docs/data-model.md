@@ -156,3 +156,29 @@ partner_loan_status(draft/active/inactive), lending_institution_status(active/in
 ### 標準ローンとの概念分離
 - 標準ローン=MFS/モゲチェック管理（共通マスタ §12）、提携ローン=organization 管理。両方の承認確率をモゲチェック API が算出し、ローンチェッカーは結果を表示のみ（算出しない）。提携だからと上位固定しない。将来の表示順は承認確率・金利・費用・借入可能額・条件適合性等を総合。顧客向けに商品区分を明示。最終審査は金融機関。診断結果は保証ではない。
 - 今回未実装: 診断 API 実接続・承認確率計算・標準ローン商品マスタ本格実装・統合診断画面。
+
+## Phase 2A-3a 追記（0005_phase2a3a_employment_income.sql・申込者の勤務・収入情報）
+
+基準: `app/supabase/migrations/0005_phase2a3a_employment_income.sql`（実ファイルが正）。
+
+### テーブル
+- `case_applicant_employment_income`（申込者と 1:1・財務 PII）: applicant_id(PK/FK→case_applicants), employer_name(text ≤200), employment_type(enum), employment_started_on(date・月初正規化), annual_gross_income_yen(bigint 円 ≥0), income_type(enum), created_at, updated_at。全業務列 nullable（部分保存）。version 履歴なし。hard delete 禁止（ガード）。applicant_id 不変（ガード）。
+- 保存 5 項目のみ。勤務先電話番号・業種・職種・見込/手取り年収・複数収入源・既存借入・購入物件・希望借入条件は本フェーズ対象外（2A-3b/2A-3c 以降）。
+- CHECK: employer_name 長さ 1..200、annual_gross_income_yen ≥0、employment_started_on ≥ '1900-01-01'。※ 未来日拒否は CHECK に `current_date` を使わず（IMMUTABLE 前提のため）RPC/TS 側で行う。
+
+### enum
+- applicant_employment_type: full_time / contract / part_time / self_employed / executive / pension / unemployed / other。
+- applicant_income_type: salary / business / pension / other。
+
+### 完了(complete)判定 — 唯一の正は DB 純粋関数
+- `app_employment_income_is_complete(...)` / `app_employment_income_missing_fields(...)`（IMMUTABLE）。雇用形態別の条件付き必須ルールはこの純粋関数のみが持つ（TS へ重複させない）。
+  - 給与系(full_time/contract/part_time/executive): employment_type + employer_name + employment_started_on + annual_gross_income_yen + income_type。
+  - self_employed / pension / other: employment_type + annual_gross_income_yen + income_type。
+  - unemployed: employment_type のみ。
+  - employment_type が null なら常に incomplete。
+- TS(`src/lib/customer-cases/employment-income.ts`)は形式・型・長さ・日付範囲のみ検証し、完了判定は行わない。
+
+### RPC
+- `app_upsert_own_applicant_employment_income(...)` returns table(updated_at, is_complete, missing_fields)。順序は 0003 プロフィール RPC を踏襲（解決→case advisory lock 815003→本人認可→状態検証(opened/inputting)→値検証/正規化→UPSERT→opened→inputting→監査→完了返却）。
+- `app_own_employment_income_progress(applicant_id)`（本人のみ・値は返さず完了/不足のみ）。
+- `app_list_case_employment_income_progress(case_id)`（スタッフ向け・値なし＝applicant_id, has_employment_input, has_income_input, is_required_input_complete, updated_at のみ。SYSTEM_ADMIN 除外）。
