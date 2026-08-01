@@ -10,6 +10,7 @@ import {
   caseInvitationStatusLabel,
   formatDate,
 } from "@/lib/customer-cases/labels";
+import { employmentIncomeProgressLabel } from "@/lib/customer-cases/employment-income";
 import { inviteApplicant } from "../actions";
 
 const NOTICE: Record<string, { kind: "ok" | "error"; text: string }> = {
@@ -79,6 +80,22 @@ export function ApplicantsSection({
                 </span>
                 {a.invitationStatus === "invited" && a.invitationExpiresAt ? (
                   <span>招待期限: {formatDate(a.invitationExpiresAt)}</span>
+                ) : null}
+              </div>
+              {/* 勤務・収入は「進捗（未入力/入力中/完了）＋最終更新」のみ。値は一切表示しない。 */}
+              <div
+                className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600"
+                data-testid="staff-employment-income"
+              >
+                <span>
+                  勤務・収入:{" "}
+                  {employmentIncomeProgressLabel(
+                    a.employmentIncomeStarted,
+                    a.employmentIncomeComplete,
+                  )}
+                </span>
+                {a.employmentIncomeUpdatedAt ? (
+                  <span>最終更新: {formatDate(a.employmentIncomeUpdatedAt)}</span>
                 ) : null}
               </div>
             </li>

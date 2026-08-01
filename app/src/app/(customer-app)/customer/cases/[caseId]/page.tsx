@@ -1,15 +1,23 @@
 /**
  * /customer/cases/[caseId] — 顧客本人の案件ビュー（自分の申込者・自分の情報のみ）。
- * 未参加/不存在は notFound、DB 障害は /error（requireCustomerCaseParticipant が担保）。
+ * 未参加/不存在は notFound、DB 障害は /error（require ヘルパーが担保）。
+ * 2 ステップ导线: 基本情報 / 勤務・収入情報（それぞれ入力状況を表示）。
  */
 
 import Link from "next/link";
-import { requireCustomerCaseParticipant } from "@/lib/auth/require";
+import {
+  requireCustomerCaseParticipant,
+  requireCustomerCaseEmploymentIncome,
+} from "@/lib/auth/require";
 import {
   customerCaseStatusLabel,
   caseApplicantTypeLabel,
 } from "@/lib/customer-cases/labels";
 import { isBasicProfileStarted } from "@/lib/customer-cases/profile";
+import {
+  isEmploymentIncomeStarted,
+  employmentIncomeProgressLabel,
+} from "@/lib/customer-cases/employment-income";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +28,11 @@ interface PageProps {
 export default async function CustomerCaseViewPage({ params }: PageProps) {
   const { caseId } = await params;
   const view = await requireCustomerCaseParticipant(caseId);
-  const started = isBasicProfileStarted(view.profile);
+  const ei = await requireCustomerCaseEmploymentIncome(caseId);
+
+  const basicStarted = isBasicProfileStarted(view.profile);
+  const eiStarted = isEmploymentIncomeStarted(ei.employmentIncome);
+  const eiLabel = employmentIncomeProgressLabel(eiStarted, ei.isComplete);
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
@@ -41,19 +53,40 @@ export default async function CustomerCaseViewPage({ params }: PageProps) {
               {customerCaseStatusLabel(view.status)}
             </span>
           </dd>
-          <dt className="text-slate-500">基本情報</dt>
-          <dd>{started ? "入力済み（続きの編集ができます）" : "未入力"}</dd>
         </dl>
       </section>
 
-      <div>
-        <Link
-          href={`/customer/cases/${view.caseId}/profile`}
-          className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-        >
-          基本情報を入力する
-        </Link>
-      </div>
+      <section className="flex flex-col gap-3">
+        <h2 className="text-sm font-semibold text-slate-700">入力する情報</h2>
+
+        <div className="flex items-center justify-between rounded border border-slate-200 bg-white p-4">
+          <div className="flex flex-col gap-0.5 text-sm">
+            <span className="font-medium">1. 基本情報</span>
+            <span className="text-xs text-slate-500">
+              {basicStarted ? "入力済み（続きの編集ができます）" : "未入力"}
+            </span>
+          </div>
+          <Link
+            href={`/customer/cases/${view.caseId}/profile`}
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          >
+            基本情報を入力する
+          </Link>
+        </div>
+
+        <div className="flex items-center justify-between rounded border border-slate-200 bg-white p-4">
+          <div className="flex flex-col gap-0.5 text-sm">
+            <span className="font-medium">2. 勤務・収入情報</span>
+            <span className="text-xs text-slate-500">{eiLabel}</span>
+          </div>
+          <Link
+            href={`/customer/cases/${view.caseId}/employment-income`}
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          >
+            勤務・収入情報を入力する
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }
