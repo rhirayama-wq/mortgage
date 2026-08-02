@@ -180,3 +180,13 @@ EXECUTE は public/anon から revoke。トリガー関数・内部関数（app_
 - 日付: 入社年月は月初へ正規化。未来日は RPC + TS で拒否（CHECK は下限のみ・current_date 不使用）。
 - 監査: `case_applicant_employment_income.created`(初回作成) と `.updated`(完了状態の遷移 incomplete↔complete)のみ記録し、毎回の autosave では書かない。metadata は applicant_id(resource_id)/changed_field_names/completeness_transition/correlation_id のみ。入力値/財務/PII は一切入れない。
 - エラー: 安全コード（invalid_employment_income_field / invalid_employment_started_on / invalid_annual_income / customer_case_not_inputtable / applicant_not_active / not_authorized 等）へ写像。SQLSTATE/SQL/テーブル名/RPC 内部名は画面へ出さない。財務値はログ/URL/エラーメッセージへ出さない。
+
+## Phase 2A-W1 追記（ブランディングの可視性・権限・Storage・監査）
+
+- 値テーブル `organization_branding` の SELECT は「自 org の active メンバー」のみ（RLS = app_is_active_member）。顧客・SYSTEM_ADMIN・他 org 不可。顧客は case-scoped safe RPC `app_get_customer_case_public_branding`（participant 本人・公開3項目・内部列 updated_by 等は返さない）経由。
+- 書込は SECURITY DEFINER RPC のみ（直接 DML GRANT なし・DELETE 禁止・organization_id 不変）。`search_path=''`・public/anon revoke・authenticated 最小 GRANT。active ORGANIZATION_ADMIN のみ（SALES/customer/SYSTEM_ADMIN/invited/suspended/left/他 org は not_authorized）。service role は通常画面で不使用。
+- Storage: public read（read は非認証で到達し得る前提）。path は乱数 UUID・ファイル名/metadata に PII を入れない・ロゴ以外を格納しない・public URL に内部秘密を含めない・signed URL/token を DB/監査へ保存しない。書込は Storage RLS で active ORG_ADMIN の自 org フォルダのみ（他 org/SALES/customer/SYSTEM_ADMIN/他 bucket 不可）。サーバーは size/宣言 MIME/拡張子/magic bytes(PNG/JPEG/WebP) を検証し SVG/GIF/MIME 偽装を拒否。
+- テーマ適用: organization/case context 確定後に server-render で CSS variables 出力（ちらつき/他 org テーマの一瞬表示を回避）。共有 singleton cache へ入れない（テナント混線防止）。顧客ポータル一覧・/login は標準テーマ。case-scoped layout はブランド解決を防御的に行い、認可は各 page が担保（DB 障害を not-found 化しない・案件存在有無を漏らさない）。
+- 色は 6桁 HEX のみ（alpha/3桁/`rgb()`/`var()`/`url()`/任意文字列を拒否＝CSS injection 不可）。検証済み HEX のみを CSS variable へ渡す。semantic color(error/warning/success/destructive/disabled/focus)はブランド色で上書きしない。
+- 監査: created/updated/logo_uploaded/logo_removed/reset。metadata は organization_id・changed_field_names・logo_changed・correlation_id のみ。画像/base64/data URL/signed URL/token/request body/magic bytes/private metadata/旧値全文は入れない。
+- 失敗回復: DB(logo_storage_path)が唯一の正。upload→DB 登録→旧 object best-effort 削除。DB 失敗時は新 object を補償削除。削除失敗は orphan として後続 GC 対象（操作全体は失敗させない）。service role 不使用。

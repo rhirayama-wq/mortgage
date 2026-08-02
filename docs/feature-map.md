@@ -139,3 +139,8 @@ B2B/B2C画面分離（route group）／申込・審査ステータス連携の�
 - モゲチェック サービスページ（診断・ランキング・各シミュレーション・特別金利・審査支援・アプリ・メッセージ相談）。
 - モゲチェック「プレ審査」報道（30万人超データでの承認可能性リアルタイム推定、承認を約束しない旨、対応行限定）。
 - MFS「AI化第二弾」プレスリリース（AI最適化診断コメント）。
+
+## Phase 2A-W1: 法人別ブランディング基盤（実装済み・ローカル検証）
+- organization 単位のホワイトラベル（表示名・ロゴ・メインカラー1色）を override として保存し、organization context 確定後の画面（法人スタッフ画面・顧客案件画面）へ server-render で反映。未設定はアプリ定数へフォールバック。
+- 適用範囲: 法人アプリ layout / 顧客 `/customer/cases/[caseId]` 配下（case-scoped）。対象外: 顧客ポータル一覧・/login・独自ドメイン/サブドメイン・favicon・メール・独自 CSS/JS・SVG。
+- ロゴはサービス管理 Storage（public read bucket `org-branding`・書込は Storage RLS で active ORG_ADMIN の自 org フォルダのみ・SVG 禁止・magic bytes 検証）。承認確率・診断・標準/提携ローンの表示ロジックには非干渉。semantic color はブランド色で上書きしない。

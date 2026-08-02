@@ -182,3 +182,19 @@ partner_loan_status(draft/active/inactive), lending_institution_status(active/in
 - `app_upsert_own_applicant_employment_income(...)` returns table(updated_at, is_complete, missing_fields)。順序は 0003 プロフィール RPC を踏襲（解決→case advisory lock 815003→本人認可→状態検証(opened/inputting)→値検証/正規化→UPSERT→opened→inputting→監査→完了返却）。
 - `app_own_employment_income_progress(applicant_id)`（本人のみ・値は返さず完了/不足のみ）。
 - `app_list_case_employment_income_progress(case_id)`（スタッフ向け・値なし＝applicant_id, has_employment_input, has_income_input, is_required_input_complete, updated_at のみ。SYSTEM_ADMIN 除外）。
+
+## Phase 2A-W1 追記（0006_phase2aw1_organization_branding.sql・法人別ブランディング基盤）
+
+基準: `app/supabase/migrations/0006_phase2aw1_organization_branding.sql`（実ファイルが正）。
+
+### テーブル
+- `organization_branding`（organization と 1:1・override のみ保存）: organization_id(PK/FK→organizations, 不変), display_name(text null, 1..100), logo_storage_path(text null, `{org_id}/{uuid}.{png|jpg|jpeg|webp}`), primary_color_hex(text null, `^#[0-9a-f]{6}$`), created_at, updated_at, updated_by_membership_id。hard delete 禁止（ガード）。reset は override 列を null 化。version 表なし・履歴は audit のみ。未設定はアプリ定数へフォールバック（デフォルト行を複製しない）。
+
+### Storage
+- bucket `org-branding`（public read・png/jpeg/webp・2MiB）。object path `{org_id}/{random_uuid}.{ext}`（先頭=org_id, 乱数 UUID, SVG/`..`/先頭 slash 排除）。バイナリは DB に持たず path のみ。public URL は server-side TS が生成。storage.objects の書込は Storage RLS で active ORG_ADMIN の自 org フォルダのみ。read は public。
+
+### RPC
+- `app_update_organization_branding(org, display_name, primary_color_hex, expected_updated_at, corr)`／`app_set_organization_branding_logo`／`app_remove_organization_branding_logo`／`app_reset_organization_branding`／`app_get_customer_case_public_branding(case_id)`（顧客・公開3項目）。全書込 RPC は advisory lock 815006・active ORG_ADMIN・楽観ロック(expected_updated_at→branding_stale_update)・監査・safe error。
+
+### テーマ導出（`src/lib/branding/branding.ts`・純粋関数）
+- 単一 HEX → `--brand-primary` / `--brand-primary-hover` / `--brand-primary-soft` / `--brand-on-primary`。on-primary は WCAG コントラスト比で白/濃色を選択。semantic color は不変。

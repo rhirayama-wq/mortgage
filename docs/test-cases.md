@@ -435,3 +435,14 @@ PG harness（`scripts/pg-harness/40_phase2a_customer_cases.sql`、run.sh 末尾�
 
 ### E2E（app/e2e/authenticated/customer-case.spec.ts 拡張）
 - P2A2-E2E-01 に追記: 顧客が勤務・収入情報をオートセーブ→完了表示→再読込保持、スタッフ画面は「勤務・収入: 完了」等の進捗のみ表示し入力値(勤務先名)は表示しない。
+
+## Phase 2A-W1 テストケース
+
+### PG ハーネス（scripts/pg-harness/80_phase2aw1_branding.sql）
+- W1-01 表示名+色保存(created) / W1-02 色更新(updated) / W1-03 ロゴ path 登録(logo_uploaded) / W1-04 楽観ロック(stale 拒否) / W1-05 ロゴ削除→null / W1-06 reset→null / W1-07 不正入力拒否(色/表示名/他 org path) / W1-07b SVG・traversal 拒否 / W1-10 SALES 更新不可・SELECT 可 / W1-11 customer 更新不可 / W1-12 SYSTEM_ADMIN 更新不可・不可視 / W1-13 他 org 更新不可・不可視 / W1-14 suspended admin 更新不可 / W1-15 customer は公開3項目のみ・値テーブル不可視 / W1-16 監査に url/path/binary 非含有 / W1-17 非 participant 0 件 / W1-18 直接 DML 拒否。Storage: W1-20 自 org folder INSERT 可 / W1-21 他 org 不可 / W1-22 SALES・customer・SYSTEM_ADMIN 不可 / W1-23 他 bucket 不可。
+
+### Unit（src/lib/branding/branding.test.ts）
+- W1-UNIT-01..10 HEX/CSS injection・display name・theme 導出・WCAG on-primary・magic bytes(PNG/JPEG/WebP/SVG 拒否)・size/mime/ext/magic・object path(テナント/traversal/SVG)・public URL・error mapping。
+
+### E2E（app/e2e/authenticated/branding.spec.ts・SUPABASE_PENDING）
+- P2AW1-E2E-01 保存→スタッフ反映→reload 保持 / -02 PNG upload・SVG 拒否 / -03 SALES 不可 / -04 semantic error 色不変 / -05 reset。
