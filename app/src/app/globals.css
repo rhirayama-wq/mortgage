@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Phase 2A-W1: ブランドテーマ変数の標準値（未設定 org のフォールバック）。
+ * organization/case context が確定した layout が server-render 時に上書きする。
+ * semantic color（error/warning/success 等）はブランド変数で上書きしない。
+ */
+:root {
+  --brand-primary: #0f172a;
+  --brand-primary-hover: #1e293b;
+  --brand-primary-soft: #f1f5f9;
+  --brand-on-primary: #ffffff;
+}
